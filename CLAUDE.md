@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-CMC_VER1 is a Windows Forms app (.NET Framework 4.7.2, old-style `.csproj` + `packages.config`) that acts as the bridge between a **CMC CartonWrap packing machine** (TCP socket protocol) and the **3PLWMS WMS API** (`api1.3plwms.com.au`), using a local SQL Server database (`CMC`) as the working store. There are no tests.
+CMC_VER1 is a WPF desktop app (.NET Framework 4.7.2, old-style `.csproj` + `packages.config`) that acts as the bridge between a **CMC CartonWrap packing machine** (TCP socket protocol) and the **3PLWMS WMS API** (`api1.3plwms.com.au`), using a local SQL Server database (`CMC`) as the working store. There are no tests.
 
 ## Build / run
 
@@ -23,11 +23,11 @@ CMC_VER1\bin\Debug\CMC_VER1.exe
 
 ## Architecture
 
-**Startup flow:** `Program` → `LoginForm` (authenticates via `AuthenticationService` against the 3PLWMS Users API) → stores ApiKey/Warehouse/UserEmail into the static `Models/SessionVariables` → opens `Main`. All WMS API calls read `API-Key` / `User-Email` headers from `SessionVariables`.
+**Startup flow:** `App.xaml` (`StartupUri`) → `LoginWindow` (authenticates via `AuthenticationService` against the 3PLWMS Users API) → stores ApiKey/Warehouse/UserEmail into the static `Models/SessionVariables` → opens `MainWindow`. All WMS API calls read `API-Key` / `User-Email` headers from `SessionVariables`.
 
-**Main form (`Main.cs`)** has two independent responsibilities:
+**Main window (`MainWindow.xaml` + `.xaml.cs`)** has two independent responsibilities:
 1. **Wave import:** user picks a wave (`GetListAllWavesByTypeAndStatuses`) → `WaveApiService.RequestCMCPackingTaskAsync` returns fulfilment numbers → for each, `ProcessCMCPackingTaskAsync` returns items (incl. label data) → saved to SQL via `sp_AddNewOrder`. Warehouse code is currently hard-coded to `"B"`.
-2. **Machine connection:** creates a `NetworkManager` (IP, port, machine ID, job number textbox) and pipes its log events into `listBoxLogs` via `BeginInvoke`.
+2. **Machine connection:** creates a `NetworkManager` (IP, port, machine ID, job number textbox) and pipes its log events into the message log (`AppendLog`, marshalled with `Dispatcher.BeginInvoke`).
 
 **Machine protocol pipeline** (the core of the app):
 - `Services/NetworkManager.cs` — TCP client. Messages are ASCII framed as `<STX>payload<ETX>`; `SendAsync` takes the payload *without* framing. Also owns the CIS counter (`GetNextCisCounter`, 1..999999) used for messages the app originates.
@@ -56,5 +56,6 @@ The `Reference` field carries the PackJobID assigned at ENQ time. Handlers swall
 ## Conventions / gotchas
 
 - Many files contain an older version of the whole file commented out at the top; the live code is below it.
+- UI is WPF. All colours, fonts and control styles (primary/secondary/danger buttons, text boxes, combo box, scroll bars) live in `Theme.xaml`, merged in `App.xaml`; use its brushes/styles rather than hard-coding colours. New XAML files must be added to `CMC_VER1.csproj` as `<Page Include=...>` (code-behind as `<Compile>` with `DependentUpon`). Per-monitor DPI awareness is declared in `app.manifest`. The implicit `TextBlock` style is deliberately absent: setting Foreground there overrides button text colours — set `Foreground` on the window instead.
 - Two JSON libraries are in use: `Newtonsoft.Json` (auth) and `System.Text.Json` (wave/shipment APIs).
 - This folder is its own git repo, but it sits inside an unrelated repo rooted at `C:\Users\tarek\Desktop`; run git commands from here, never from a parent folder.
