@@ -1,0 +1,60 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Overview
+
+CMC_VER1 is a Windows Forms app (.NET Framework 4.7.2, old-style `.csproj` + `packages.config`) that acts as the bridge between a **CMC CartonWrap packing machine** (TCP socket protocol) and the **3PLWMS WMS API** (`api1.3plwms.com.au`), using a local SQL Server database (`CMC`) as the working store. There are no tests.
+
+## Build / run
+
+Run from the solution directory (`CMC_VER1/`, the one containing `CMC_VER1.sln`):
+
+```
+nuget restore CMC_VER1.sln
+msbuild CMC_VER1.sln /p:Configuration=Debug
+CMC_VER1\bin\Debug\CMC_VER1.exe
+```
+
+- Needs Visual Studio / Build Tools MSBuild (not `dotnet build` — this is a non-SDK project). NuGet packages live in the solution-level `packages/` folder.
+- New `.cs` files must be added as `<Compile Include=...>` entries in `CMC_VER1/CMC_VER1.csproj`; they are not picked up automatically.
+- Deployment is ClickOnce (`publish/`, manifests signed with `CMC_VER1_TemporaryKey.pfx`).
+- The app needs network access to the SQL Server named in `App.config` (`CMCConnection`, currently `CMC_Control\CMC_Control`; alternative dev connection strings are commented out there) and to the WMS API.
+
+## Architecture
+
+**Startup flow:** `Program` → `LoginForm` (authenticates via `AuthenticationService` against the 3PLWMS Users API) → stores ApiKey/Warehouse/UserEmail into the static `Models/SessionVariables` → opens `Main`. All WMS API calls read `API-Key` / `User-Email` headers from `SessionVariables`.
+
+**Main form (`Main.cs`)** has two independent responsibilities:
+1. **Wave import:** user picks a wave (`GetListAllWavesByTypeAndStatuses`) → `WaveApiService.RequestCMCPackingTaskAsync` returns fulfilment numbers → for each, `ProcessCMCPackingTaskAsync` returns items (incl. label data) → saved to SQL via `sp_AddNewOrder`. Warehouse code is currently hard-coded to `"B"`.
+2. **Machine connection:** creates a `NetworkManager` (IP, port, machine ID, job number textbox) and pipes its log events into `listBoxLogs` via `BeginInvoke`.
+
+**Machine protocol pipeline** (the core of the app):
+- `Services/NetworkManager.cs` — TCP client. Messages are ASCII framed as `<STX>payload<ETX>`; `SendAsync` takes the payload *without* framing. Also owns the CIS counter (`GetNextCisCounter`, 1..999999) used for messages the app originates.
+- `Services/FormatProcessMessages.cs` — parses incoming pipe-delimited payloads (`MachineId|TYPE|Counter|Reference|...`) into `Models/MessageProcessingResult`, and builds all outgoing payloads (`Format*Response` / `FormatPrnRequest`).
+- `Services/MessageRouter.cs` — switch on message type → `Handlers/*Handler`.
+- **Case convention:** UPPERCASE type = request from the machine, lowercase = response. The app replies to each machine request with the lowercase echo (`ENQ`→`enq`, `LAB`→`lab`, etc.). The app's own `PRN` request gets a `prn` result back from the machine.
+
+Message flow per carton:
+| Machine sends | Handler | Stored proc | Reply / side effect |
+|---|---|---|---|
+| `HBT` | inline in router | — | `hbt` |
+| `ENQ` (barcode scan) | `EnquiryHandler` | `sp_ENQ_Get_Data` | `enq` with PackJobID as reference + MatchLab |
+| `IND` (inducted) | `InductedHandler` | — | `ind` |
+| `ACK` | `AckHandler` | `sp_Update_ACK_Status`, `sp_Get_PRN_Data` | `ack`; if ACK result = 1, sends `PRN` with label data |
+| `prn` (print result) | `PrnResultHandler` | `sp_Update_PRN` | — |
+| `LAB` (label/measure) | `LabHandler` | `sp_Update_LAB` | `lab` with result + MatchLab |
+| `END` (carton done) | `EndHandler` | `sp_Update_END` | calls WMS `UpdateShipmentInfo` (Completed/Failed + box dims/weights), then `end` |
+| `REM` (removed) | `RemHandler` | `sp_Update_REM` | `rem` |
+
+The `Reference` field carries the PackJobID assigned at ENQ time. Handlers swallow DB/API exceptions so the machine always gets its reply — preserve that when editing.
+
+**Data access:** `Services/SLQManager.cs` (class `SQLManager`, file name is misspelled) — only exposes `ExecuteStoredProcedure(name, Dictionary<string, object>)` returning a `DataTable`. All business logic lives in SQL Server stored procedures, which are **not in this repo**.
+
+**API endpoints:** `Helpers/ApiEndpoints.cs` (production URLs active; QA `qaapi.3plwms.com.au` URLs commented out above them). The auth endpoint is hard-coded separately in `AuthenticationService`.
+
+## Conventions / gotchas
+
+- Many files contain an older version of the whole file commented out at the top; the live code is below it.
+- Two JSON libraries are in use: `Newtonsoft.Json` (auth) and `System.Text.Json` (wave/shipment APIs).
+- This folder is its own git repo, but it sits inside an unrelated repo rooted at `C:\Users\tarek\Desktop`; run git commands from here, never from a parent folder.
