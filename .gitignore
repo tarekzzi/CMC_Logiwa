@@ -10,3 +10,6 @@ publish/
 
 # NuGet (restored via packages.config)
 packages/
+
+*.pfx
+UI-review.md
