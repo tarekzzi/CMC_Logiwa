@@ -204,7 +204,8 @@ namespace CMC_VER1.Services
                     { "@LabelDataLen", item.labelDataLen },
                     { "@LabelData", item.labelData },
                     { "@MatchLab", DBNull.Value }, // ignored as per your rule
-                    { "@TrackingNumber", item.trackingNumber }
+                    { "@TrackingNumber", item.trackingNumber },
+                    { "@UserName", (object)SessionVariables.UserEmail ?? DBNull.Value }
                 };
 
                 _sqlManager.ExecuteStoredProcedure("sp_AddNewOrder", parameters);

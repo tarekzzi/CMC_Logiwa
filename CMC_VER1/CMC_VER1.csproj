@@ -26,7 +26,7 @@
     <UpdatePeriodically>false</UpdatePeriodically>
     <UpdateRequired>false</UpdateRequired>
     <MapFileExtensions>true</MapFileExtensions>
-    <ApplicationRevision>21</ApplicationRevision>
+    <ApplicationRevision>25</ApplicationRevision>
     <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
     <UseApplicationTrust>false</UseApplicationTrust>
     <PublishWizardCompleted>true</PublishWizardCompleted>
@@ -228,19 +228,19 @@
     <Compile Include="App.xaml.cs">
       <DependentUpon>App.xaml</DependentUpon>
     </Compile>
-<Compile Include="Models\MessageProcessingResult.cs" />
+    <Compile Include="Models\MessageProcessingResult.cs" />
     <Compile Include="Models\SessionVariables.cs" />
     <Compile Include="ExportLogDialog.xaml.cs">
       <DependentUpon>ExportLogDialog.xaml</DependentUpon>
     </Compile>
-<Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Services\FormatProcessMessages.cs" />
     <Compile Include="Services\MessageRouter.cs" />
     <Compile Include="Services\NetworkManager.cs" />
     <Compile Include="Services\ShipmentApiService.cs" />
     <Compile Include="Services\SLQManager.cs" />
     <Compile Include="Services\WaveApiService.cs" />
-<EmbeddedResource Include="Properties\Resources.resx">
+    <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
       <SubType>Designer</SubType>

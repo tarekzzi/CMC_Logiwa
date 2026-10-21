@@ -489,6 +489,9 @@ namespace CMC_VER1
                 sqlManager.ExecuteStoredProcedure("sp_Reset_Order", parameters);
 
                 AppendLog($"INFO: Order {orderNumber} reset.");
+
+                txtResetOrderNumber.Clear();
+                txtResetOrderNumber.Focus();
             }
             catch (Exception ex)
             {

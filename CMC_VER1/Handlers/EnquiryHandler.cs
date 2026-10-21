@@ -41,8 +41,19 @@ namespace CMC_VER1.Handlers
             string matchLab = "";
             string packJobId = "";
             int result01 = 0;
+            string description = null;
 
-            if (dt != null && dt.Rows.Count > 0)
+            if (dt != null && dt.Rows.Count > 0 && dt.Columns.Contains("IsDuplicate")
+                && Convert.ToInt32(dt.Rows[0]["IsDuplicate"] == DBNull.Value ? 0 : dt.Rows[0]["IsDuplicate"]) == 1)
+            {
+                // More than one open record matches this barcode: reject like "not found",
+                // and let the machine pop-up say why (MSG_DESCRIPTION is shown on the CMC panel).
+                packJobId = "";
+                matchLab = "";
+                result01 = 0;
+                description = "Duplicate Record";
+            }
+            else if (dt != null && dt.Rows.Count > 0)
             {
                 packJobId = dt.Rows[0]["PackJobID"]?.ToString() ?? "";
                 matchLab = dt.Rows[0]["MatchLab"]?.ToString() ?? "";
@@ -54,6 +65,7 @@ namespace CMC_VER1.Handlers
                 packJobId = "";
                 matchLab = "";
                 result01 = 0;
+                description = "Not Found";
             }
 
             string payload = _formatter.FormatEnqResponse(
@@ -63,7 +75,8 @@ namespace CMC_VER1.Handlers
                 jobNumber: jobNumber,
                 result01: result01,
                 matchLab: matchLab,
-                packJobId: packJobId
+                packJobId: packJobId,
+                description: description
             );
 
             await _networkManager.SendAsync(payload);

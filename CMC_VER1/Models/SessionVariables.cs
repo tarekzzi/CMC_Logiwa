@@ -18,5 +18,8 @@ namespace CMC_VER1.Models
     {
         public int waveID { get; set; }
         public string waveNumber { get; set; }
+
+        // The themed ComboBox selection box shows the item's text, so give it the wave number.
+        public override string ToString() => waveNumber;
     }
 }

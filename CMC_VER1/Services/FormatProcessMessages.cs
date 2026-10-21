@@ -238,10 +238,11 @@ namespace CMC_VER1
             string jobNumber,
             int result01,
             string matchLab,
-            string packJobId)
+            string packJobId,
+            string description = null)
         {
             string reference = packJobId ?? "";
-            string description = jobNumber ?? "";
+            description = description ?? jobNumber ?? "";
             string matchLabSafe = matchLab ?? "";
 
             return string.Join("|", new[]
