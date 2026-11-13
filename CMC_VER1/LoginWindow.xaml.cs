@@ -13,7 +13,7 @@ namespace CMC_VER1
     /// </summary>
     public partial class LoginWindow : Window
     {
-        private readonly LocalAuthService _auth = new LocalAuthService(new SQLManager());
+        private LocalAuthService _auth;
         private bool _setupMode;
 
         public LoginWindow()
@@ -24,9 +24,35 @@ namespace CMC_VER1
 
         private async Task InitAsync()
         {
+            // First run on this PC: ask where the local database is before anything else.
+            if (DbSettingsStore.Load() == null && !ShowDbSettings(firstRun: true))
+            {
+                Close();
+                return;
+            }
+            await ConnectAsync();
+        }
+
+        private bool ShowDbSettings(bool firstRun)
+        {
+            var dlg = new DbSettingsWindow(firstRun) { Owner = this };
+            return dlg.ShowDialog() == true;
+        }
+
+        private async void btnDbSettings_Click(object sender, RoutedEventArgs e)
+        {
+            if (ShowDbSettings(firstRun: false))
+                await ConnectAsync();
+        }
+
+        private async Task ConnectAsync()
+        {
             ToggleUi(enabled: false, "Connecting to the database…", isError: false);
             try
             {
+                var settings = DbSettingsStore.Load();
+                lblEnvironment.Text = settings == null ? "" : $"{settings.EnvironmentName}  ·  {settings.Server}  ·  {settings.Database}";
+                _auth = new LocalAuthService(new SQLManager());
                 bool hasUsers = await Task.Run(() => _auth.HasUsers());
                 SetSetupMode(!hasUsers);
                 ToggleUi(enabled: true, "", isError: false);
@@ -123,6 +149,7 @@ namespace CMC_VER1
             txtConfirm.IsEnabled = enabled;
             btnLogin.IsEnabled = enabled;
             btnCancel.IsEnabled = enabled;
+            btnDbSettings.IsEnabled = enabled;
             ShowStatus(status, isError);
         }
 

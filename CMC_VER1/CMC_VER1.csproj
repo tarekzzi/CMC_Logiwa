@@ -132,6 +132,10 @@
     <Compile Include="Models\UpdateShipmentInfoRequest.cs" />
     <Compile Include="Services\AuthenticationService.cs" />
     <Compile Include="Services\LocalAuthService.cs" />
+    <Compile Include="Services\DbSettings.cs" />
+    <Compile Include="DbSettingsWindow.xaml.cs">
+      <DependentUpon>DbSettingsWindow.xaml</DependentUpon>
+    </Compile>
     <Compile Include="Handlers\AckHandler.cs" />
     <Compile Include="Handlers\EndHandler.cs" />
     <Compile Include="Handlers\EnquiryHandler.cs" />
@@ -190,6 +194,10 @@
       <SubType>Designer</SubType>
     </ApplicationDefinition>
     <Page Include="Theme.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="DbSettingsWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>

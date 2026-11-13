@@ -12,9 +12,10 @@ namespace CMC_VER1
 
         public SQLManager()
         {
-            _connectionString =
-                ConfigurationManager.ConnectionStrings["CMCConnection"]?.ConnectionString
-                ?? throw new Exception("Connection string 'CMCConnection' not found.");
+            // Saved per PC by the Database settings screen (encrypted, outside the project and App.config).
+            var settings = CMC_VER1.Services.DbSettingsStore.Load()
+                ?? throw new InvalidOperationException("Database settings are not configured on this PC.");
+            _connectionString = settings.BuildConnectionString();
         }
 
         public DataTable ExecuteStoredProcedure(string storedProcedureName, Dictionary<string, object> parameters)

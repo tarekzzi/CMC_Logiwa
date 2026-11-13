@@ -30,6 +30,11 @@
                         MinHeight="42" IsDefault="True" Click="btnLogin_Click" />
                 <Button x:Name="btnCancel" Content="Cancel" Style="{StaticResource SecondaryButton}"
                         MinHeight="42" Margin="0,8,0,0" IsCancel="True" Click="btnCancel_Click" />
+
+                <TextBlock x:Name="lblEnvironment" Style="{StaticResource MutedText}" TextWrapping="Wrap"
+                           Margin="0,20,0,0" />
+                <Button x:Name="btnDbSettings" Content="Database settings…" Style="{StaticResource SecondaryButton}"
+                        MinHeight="36" Margin="0,8,0,0" Click="btnDbSettings_Click" />
             </StackPanel>
         </Border>
     </Grid>
