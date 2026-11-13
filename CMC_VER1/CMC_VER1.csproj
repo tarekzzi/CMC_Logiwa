@@ -131,6 +131,7 @@
     <Compile Include="Models\RequestCMCPackingTaskRequest.cs" />
     <Compile Include="Models\UpdateShipmentInfoRequest.cs" />
     <Compile Include="Services\AuthenticationService.cs" />
+    <Compile Include="Services\LocalAuthService.cs" />
     <Compile Include="Handlers\AckHandler.cs" />
     <Compile Include="Handlers\EndHandler.cs" />
     <Compile Include="Handlers\EnquiryHandler.cs" />
