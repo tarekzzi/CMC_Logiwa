@@ -31,6 +31,7 @@ namespace CMC_Logiwa.Handlers
             if (!int.TryParse(result.Reference, out int packJobId))
                 return;
 
+            string dbError = null;
             try
             {
                 var parameters = new Dictionary<string, object>
@@ -40,9 +41,10 @@ namespace CMC_Logiwa.Handlers
 
                 _sql.ExecuteStoredProcedure("dbo.sp_Update_REM", parameters);
             }
-            catch
+            catch (Exception ex)
             {
-                // Swallowed on purpose: the machine must still get its reply.
+                // Swallowed on purpose: the machine must still get its reply. Shown on the front panel below.
+                dbError = ex.Message;
             }
 
             string responsePayload = _formatter.FormatRemResponse(
@@ -52,6 +54,11 @@ namespace CMC_Logiwa.Handlers
             );
 
             await _networkManager.SendAsync(responsePayload);
+
+            if (dbError != null)
+                _networkManager.LogError($"job {packJobId}: removal could not be saved ({dbError})");
+            else
+                _networkManager.LogError($"job {packJobId}: carton removed from the machine");
         }
     }
 }

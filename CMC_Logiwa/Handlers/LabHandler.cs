@@ -1,5 +1,4 @@
-﻿
-using CMC_Logiwa.Models;
+﻿using CMC_Logiwa.Models;
 using CMC_Logiwa.Services;
 using System;
 using System.Collections.Generic;
@@ -8,6 +7,11 @@ using System.Threading.Tasks;
 
 namespace CMC_Logiwa.Handlers
 {
+    /// <summary>
+    /// LAB (label check and measurement). sp_Update_LAB stores the measurements and decides the result
+    /// (1 = ok); the reply carries the result and MatchLab (the tracking number the printed label must match).
+    /// A failed check is shown on the front panel log with the machine's event text.
+    /// </summary>
     public class LabHandler
     {
         private readonly NetworkManager _networkManager;
@@ -26,12 +30,14 @@ namespace CMC_Logiwa.Handlers
             if (result == null || !result.IsRequest || result.MessageType != "LAB")
                 return;
 
-            
             string packJobId = result.Reference ?? "";
 
-            
             int labResults = 0;
             string matchLab = "";
+            string orderNumber = null;
+            string eventText = null;
+            string eventCode = null;
+            string dbError = null;
 
             try
             {
@@ -44,43 +50,32 @@ namespace CMC_Logiwa.Handlers
                     { "@LabSizeL", result.LabSizeL },
                     { "@LabSizeW", result.LabSizeW },
                     { "@LabArea",  result.LabArea },
-                    {"@LabWeightCarton", result.LabWeightCarton },
-                    {"@LabWeightScale", result.LabWeightScale }
+                    { "@LabWeightCarton", result.LabWeightCarton },
+                    { "@LabWeightScale", result.LabWeightScale }
                 };
 
                 DataTable dt = _sql.ExecuteStoredProcedure("dbo.sp_Update_LAB", parameters);
 
-                //await SendPRNAsync(result.MachineId, result.Reference, packJobId);
-
-                
-
-
                 if (dt != null && dt.Rows.Count > 0)
                 {
-                    
-                    object oRes = dt.Rows[0]["LABResults"];
-                    if (oRes != null && int.TryParse(oRes.ToString(), out int parsed))
+                    DataRow row = dt.Rows[0];
+
+                    if (int.TryParse(row["LABResults"]?.ToString(), out int parsed))
                         labResults = parsed;
 
-                    matchLab = dt.Rows[0]["MatchLab"]?.ToString() ?? "";
-                }
-                else
-                {
-                    
-                    labResults = 0;
-                    matchLab = "";
+                    matchLab = row["MatchLab"]?.ToString() ?? "";
+                    orderNumber = Read(row, "OrderNumber");
+                    eventCode = Read(row, "EventCode");
+                    eventText = Read(row, "EventText");
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                
+                // The machine must always get its reply: report "not ok" and show why on the front panel.
                 labResults = 0;
                 matchLab = "";
+                dbError = ex.Message;
             }
-
-            
-            //int flagToReject = (labResults == 1) ? 0 : 1;
-            //string flagToReject = "";
 
             string responsePayload = _formatter.FormatLabResponse(
                 machineId: result.MachineId,
@@ -88,49 +83,23 @@ namespace CMC_Logiwa.Handlers
                 reference: result.Reference,
                 result: labResults,
                 matchLab: matchLab,
-                //flagToReject: flagToReject,
                 flagToReject: "",
-                sorter: ""                  
+                sorter: ""
             );
 
             await _networkManager.SendAsync(responsePayload);
+
+            string who = string.IsNullOrEmpty(orderNumber) ? $"job {packJobId}" : orderNumber;
+            if (dbError != null)
+                _networkManager.LogError($"{who}: label check could not be saved ({dbError})");
+            else if (labResults != 1)
+                _networkManager.LogError($"{who}: label check failed - {Describe(eventText, eventCode)}");
         }
-        //private async Task SendPRNAsync(string machineId, string reference, string packJobId)
-        //{
-        //    try
-        //    {
-        //        if (!int.TryParse(packJobId, out int packJobIdInt))
-        //            return;
 
-        //        var prnParams = new Dictionary<string, object>
-        //        {
-        //            { "@PackJobID", packJobIdInt }
-        //        };
+        private static string Read(DataRow row, string column) =>
+            row.Table.Columns.Contains(column) && row[column] != DBNull.Value ? row[column].ToString() : null;
 
-        //        DataTable dt = _sql.ExecuteStoredProcedure("dbo.sp_Get_PRN_Data", prnParams);
-
-        //        if (dt.Rows.Count == 0)
-        //            return;
-
-        //        string labelData = dt.Rows[0]["LabelData"]?.ToString() ?? "";
-
-        //        if (string.IsNullOrWhiteSpace(labelData))
-        //            return;
-
-        //        string cisCounter = _networkManager.GetNextCisCounter();
-
-        //        string prnPayload = _formatter.FormatPrnRequest(
-        //            machineId,
-        //            cisCounter,
-        //            reference,
-        //            labelData
-        //        );
-
-        //        await _networkManager.SendAsync(prnPayload);
-        //    }
-        //    catch
-        //    {
-        //    }
-        //}
+        private static string Describe(string eventText, string eventCode) =>
+            string.IsNullOrEmpty(eventText) ? "no reason given" : (string.IsNullOrEmpty(eventCode) ? eventText : $"{eventText} ({eventCode})");
     }
 }

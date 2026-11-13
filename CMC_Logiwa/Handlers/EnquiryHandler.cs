@@ -81,6 +81,12 @@ namespace CMC_Logiwa.Handlers
             );
 
             await _networkManager.SendAsync(payload);
+
+            // Front panel: what the operator needs to see without clicking anything.
+            if (result01 == 1)
+                _networkManager.LogInfo($"{result.Barcode}: accepted (job {packJobId})");
+            else
+                _networkManager.LogError($"{result.Barcode}: {description}");
         }
     }
 }

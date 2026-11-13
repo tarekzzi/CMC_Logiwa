@@ -521,8 +521,8 @@ namespace CMC_Logiwa.Services
                 OnMessageReceived?.Invoke("RECV: " + payload);
         }
 
-        private void LogInfo(string message) => OnMessageReceived?.Invoke("INFO: " + message);
-        private void LogError(string message) => OnError?.Invoke("ERROR: " + message);
+        public void LogInfo(string message) => OnMessageReceived?.Invoke("INFO: " + message);
+        public void LogError(string message) => OnError?.Invoke("ERROR: " + message);
 
         public void Dispose()
         {

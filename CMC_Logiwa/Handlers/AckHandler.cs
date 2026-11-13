@@ -148,10 +148,17 @@ namespace CMC_Logiwa.Handlers
                         { "@ACK_Status", ackStatus }
                     };
 
-                    _sql.ExecuteStoredProcedure("dbo.sp_Update_ACK_Status", parameters);
+                    DataTable ackDt = _sql.ExecuteStoredProcedure("dbo.sp_Update_ACK_Status", parameters);
+
+                    if (ackStatus != 1)
+                    {
+                        string order = ackDt != null && ackDt.Rows.Count > 0 ? ackDt.Rows[0]["OrderNumber"]?.ToString() : null;
+                        _networkManager.LogError($"{(string.IsNullOrEmpty(order) ? "job " + packJobId : order)}: machine did not accept the carton (ACK failed)");
+                    }
                 }
-                catch
+                catch (Exception ex)
                 {
+                    _networkManager.LogError($"job {packJobId}: ACK could not be saved ({ex.Message})");
                 }
             });
 
@@ -180,7 +187,11 @@ namespace CMC_Logiwa.Handlers
                 string labelData = dt.Rows[0]["LabelData"]?.ToString() ?? "";
 
                 if (string.IsNullOrWhiteSpace(labelData))
+                {
+                    string order = dt.Columns.Contains("OrderNumber") ? dt.Rows[0]["OrderNumber"]?.ToString() : null;
+                    _networkManager.LogError($"{(string.IsNullOrEmpty(order) ? "job " + packJobId : order)}: label missing, print not sent");
                     return;
+                }
 
                 string cisCounter = _networkManager.GetNextCisCounter();
 
@@ -193,8 +204,9 @@ namespace CMC_Logiwa.Handlers
 
                 await _networkManager.SendAsync(prnPayload);
             }
-            catch
+            catch (Exception ex)
             {
+                _networkManager.LogError($"job {packJobId}: print request failed ({ex.Message})");
             }
         }
     }

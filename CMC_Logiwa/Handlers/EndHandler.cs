@@ -10,7 +10,8 @@ namespace CMC_Logiwa.Handlers
     /// <summary>
     /// END (carton finished). The result, size and weight are stored locally by sp_Update_END.
     /// Nothing is sent to Logiwa from here: a successful END is queued in the local outbox and the
-    /// background service pushes it to the web VM. The machine always gets its reply.
+    /// background service pushes it to the web VM. The machine always gets its reply, and the outcome
+    /// is shown on the front panel log.
     /// </summary>
     public class EndHandler
     {
@@ -33,6 +34,12 @@ namespace CMC_Logiwa.Handlers
             if (!int.TryParse(result.Reference, out int packJobId))
                 return;
 
+            int finalResult = 0;
+            string orderNumber = null;
+            string eventText = null;
+            string eventCode = null;
+            string dbError = null;
+
             try
             {
                 var parameters = new Dictionary<string, object>
@@ -48,11 +55,21 @@ namespace CMC_Logiwa.Handlers
                     { "@EndWeightScale", result.EndWeightScale }
                 };
 
-                _sql.ExecuteStoredProcedure("dbo.sp_Update_END", parameters);
+                DataTable dt = _sql.ExecuteStoredProcedure("dbo.sp_Update_END", parameters);
+
+                if (dt != null && dt.Rows.Count > 0)
+                {
+                    DataRow row = dt.Rows[0];
+                    int.TryParse(row["FinalResult"]?.ToString(), out finalResult);
+                    orderNumber = Read(row, "OrderNumber");
+                    eventCode = Read(row, "EventCode");
+                    eventText = Read(row, "EventText");
+                }
             }
-            catch
+            catch (Exception ex)
             {
-                // Swallowed on purpose: the machine must still get its reply.
+                // Swallowed on purpose: the machine must still get its reply. Shown on the front panel below.
+                dbError = ex.Message;
             }
 
             string responsePayload = _formatter.FormatEndResponse(
@@ -62,6 +79,18 @@ namespace CMC_Logiwa.Handlers
             );
 
             await _networkManager.SendAsync(responsePayload);
+
+            string who = string.IsNullOrEmpty(orderNumber) ? $"job {packJobId}" : orderNumber;
+            if (dbError != null)
+                _networkManager.LogError($"{who}: end of carton could not be saved ({dbError})");
+            else if (finalResult == 1)
+                _networkManager.LogInfo($"{who}: completed, weight and size queued for sending");
+            else
+                _networkManager.LogError($"{who}: failed at end - " +
+                    (string.IsNullOrEmpty(eventText) ? "no reason given" : (string.IsNullOrEmpty(eventCode) ? eventText : $"{eventText} ({eventCode})")));
         }
+
+        private static string Read(DataRow row, string column) =>
+            row.Table.Columns.Contains(column) && row[column] != DBNull.Value ? row[column].ToString() : null;
     }
 }

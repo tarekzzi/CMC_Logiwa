@@ -67,7 +67,7 @@ namespace CMC_Logiwa
                     break;
 
                 case "prn":
-                    await new PrnResultHandler(sqlManager).Handle(result);
+                    await new PrnResultHandler(networkManager, sqlManager).Handle(result);
                     break;
                 case "LAB":
                     await new LabHandler(networkManager, formatter, sqlManager).Handle(result);

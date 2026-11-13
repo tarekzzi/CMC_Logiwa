@@ -31,6 +31,8 @@ BEGIN
                 WHEN @ACK_Status = N'0' THEN N'ACK failed'
                 ELSE N'ACK status ' + ISNULL(@ACK_Status, N'?') END
     FROM dbo.PackJob WHERE PackJobID = @PackJobID;
+
+    SELECT OrderNumber FROM dbo.PackJob WHERE PackJobID = @PackJobID;
 END
 GO
 
@@ -57,11 +59,13 @@ BEGIN
         SELECT PackJobID, OrderNumber, N'PRN', MachineId, N'Label missing, PRN not sent'
         FROM dbo.PackJob WHERE PackJobID = @PackJobID;
 
-        SELECT CAST(NULL AS NVARCHAR(20)) AS PackID, CAST(NULL AS NVARCHAR(MAX)) AS LabelData WHERE 1 = 0;
+        -- one row with an empty label (the app sends no PRN and shows the reason on the front panel)
+        SELECT CAST(NULL AS NVARCHAR(20)) AS PackID, CAST(NULL AS NVARCHAR(MAX)) AS LabelData, OrderNumber
+        FROM dbo.PackJob WHERE PackJobID = @PackJobID;
         RETURN;
     END
 
-    SELECT PackID, LabelData FROM dbo.PackJob WHERE PackJobID = @PackJobID;
+    SELECT PackID, LabelData, OrderNumber FROM dbo.PackJob WHERE PackJobID = @PackJobID;
 END
 GO
 
@@ -82,6 +86,8 @@ BEGIN
                 WHEN @PRNResult = N'0' THEN N'Print failed'
                 ELSE N'Print result ' + ISNULL(@PRNResult, N'?') END
     FROM dbo.PackJob WHERE PackJobID = @PackJobID;
+
+    SELECT OrderNumber FROM dbo.PackJob WHERE PackJobID = @PackJobID;
 END
 GO
 
@@ -101,12 +107,13 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @id INT = TRY_CONVERT(INT, @PackJobID);
-    DECLARE @EventText NVARCHAR(100), @LABResults INT, @HasBoxIssue BIT, @MatchLab NVARCHAR(100), @found INT = 0;
+    DECLARE @EventText NVARCHAR(100), @LABResults INT, @HasBoxIssue BIT, @MatchLab NVARCHAR(100), @found INT = 0,
+            @OrderNumber NVARCHAR(50);
 
     SELECT TOP (1) @EventText = EventText FROM dbo.Events WHERE EventCode = @LabEvent;
     SET @EventText = ISNULL(@EventText, N'Unknown Event');
 
-    SELECT @HasBoxIssue = HasBoxIssue, @MatchLab = MatchLab, @found = 1
+    SELECT @HasBoxIssue = HasBoxIssue, @MatchLab = MatchLab, @OrderNumber = OrderNumber, @found = 1
     FROM dbo.PackJob WHERE PackJobID = @id;
 
     IF @found = 0
@@ -137,7 +144,8 @@ BEGIN
            LEFT((CASE WHEN @LABResults = 1 THEN N'Label ok' ELSE N'Label failed' END) + N': ' + @EventText, 400)
     FROM dbo.PackJob WHERE PackJobID = @id;
 
-    SELECT @LABResults AS LABResults, @MatchLab AS MatchLab;
+    SELECT @LABResults AS LABResults, @MatchLab AS MatchLab,
+           @OrderNumber AS OrderNumber, @LabEvent AS EventCode, @EventText AS EventText;
 END
 GO
 
@@ -159,7 +167,9 @@ BEGIN
 
     DECLARE @EventText NVARCHAR(100), @HasBoxIssue BIT, @FinalResult INT, @push NVARCHAR(10), @found INT = 0;
 
-    SELECT @HasBoxIssue = ISNULL(HasBoxIssue, 0), @push = PushStatus, @found = 1
+    DECLARE @OrderNumber NVARCHAR(50);
+
+    SELECT @HasBoxIssue = ISNULL(HasBoxIssue, 0), @push = PushStatus, @OrderNumber = OrderNumber, @found = 1
     FROM dbo.PackJob WHERE PackJobID = @PackJobID;
 
     IF @found = 0
@@ -205,7 +215,7 @@ BEGIN
            LEFT((CASE WHEN @FinalResult = 1 THEN N'End ok' ELSE N'End failed' END) + N': ' + @EventText, 400)
     FROM dbo.PackJob WHERE PackJobID = @PackJobID;
 
-    SELECT @FinalResult AS FinalResult;
+    SELECT @FinalResult AS FinalResult, @OrderNumber AS OrderNumber, @EndEvent AS EventCode, @EventText AS EventText;
 END
 GO
 
