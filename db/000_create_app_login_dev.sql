@@ -14,7 +14,7 @@ USE [master];
 GO
 DECLARE @pwd nvarchar(128) = N'CHANGE_ME_BEFORE_RUNNING';
 
-IF @pwd = N'CHANGE_ME_BEFORE_RUNNING'
+IF @pwd = N'CHANGE_ME_' + N'BEFORE_RUNNING'
     THROW 50000, 'Edit the password in this script before running it.', 1;
 
 IF SUSER_ID(N'CMC_Logiwa_app_dev') IS NULL
