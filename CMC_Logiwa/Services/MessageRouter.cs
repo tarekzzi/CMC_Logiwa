@@ -41,8 +41,7 @@ namespace CMC_Logiwa
             MessageProcessingResult result,
             NetworkManager networkManager,
             FormatProcessMessages formatter,
-            SQLManager sqlManager,
-            Func<string> getJobNumber)
+            SQLManager sqlManager)
         {
             switch (result.MessageType)
             {
@@ -53,7 +52,7 @@ namespace CMC_Logiwa
                    
                     break;
                 case "ENQ":
-                    var enq = new EnquiryHandler(networkManager, formatter, sqlManager, getJobNumber);
+                    var enq = new EnquiryHandler(networkManager, formatter, sqlManager);
                     await enq.Handle(result);
                     break;
 

@@ -1,20 +1,19 @@
-using CMC_Logiwa.Helpers;
 using CMC_Logiwa.Models;
 using CMC_Logiwa.Services;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Data;
 using System.Linq;
-using System.Net.Http;
 using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace CMC_Logiwa
 {
@@ -41,14 +40,19 @@ namespace CMC_Logiwa
         public string Line => $"{Time}  {Message}";
     }
 
+    /// <summary>One row of the "Duplicate scans" list.</summary>
+    public sealed class DuplicateItem
+    {
+        public string OrderNumber { get; set; }
+        public string Text { get; set; }
+        public override string ToString() => Text;
+    }
+
     public partial class MainWindow : Window
     {
         private const int MaxLogLines = 5000;
 
         private NetworkManager _networkManager;
-        private static readonly HttpClient Http = new HttpClient();
-        private List<string> _ordersInMemory = new List<string>();
-        private readonly WaveApiService _waveApiService;
 
         // Every log line, oldest first. The list box shows only the lines matching _logFilter.
         private readonly ObservableCollection<LogEntry> _logLines = new ObservableCollection<LogEntry>();
@@ -56,20 +60,15 @@ namespace CMC_Logiwa
         private string _logFilter = "";
         private bool _exitConfirmed;
 
-        public string ApiKey { get; }
-        public string Warehouse { get; }
-        public string WarehouseCode { get; }
-        public int WarehouseID { get; }
+        private readonly DispatcherTimer _duplicatesTimer;
+        private bool _refreshingDuplicates;
 
-        public MainWindow(string apiKey, string warehouse, string warehouseCode, string userEmail, int warehouseID)
+        public MainWindow(string userName)
         {
             InitializeComponent();
 
-            ApiKey = apiKey;
-            Warehouse = warehouse;
-            WarehouseCode = warehouseCode;
-            WarehouseID = warehouseID;
-            lblSession.Text = $"{warehouse} ({warehouseCode})   ·   {userEmail}";
+            var settings = DbSettingsStore.Load();
+            lblSession.Text = settings == null ? userName : $"{settings.EnvironmentName}   ·   {userName}";
 
             _logView = CollectionViewSource.GetDefaultView(_logLines);
             _logView.Filter = o => MatchesLogFilter((LogEntry)o);
@@ -79,7 +78,15 @@ namespace CMC_Logiwa
             UpdateLogCount();
             Closing += MainWindow_Closing;
             PreviewKeyDown += MainWindow_PreviewKeyDown;
-            _waveApiService = new WaveApiService(new HttpClient());
+
+            _duplicatesTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+            _duplicatesTimer.Tick += async (s, e) => await RefreshDuplicatesAsync();
+            Loaded += async (s, e) =>
+            {
+                await RefreshDuplicatesAsync();
+                _duplicatesTimer.Start();
+            };
+            Closed += (s, e) => _duplicatesTimer.Stop();
         }
 
         private Brush Res(string key) => (Brush)FindResource(key);
@@ -122,7 +129,6 @@ namespace CMC_Logiwa
                 txtIPAddress.Text,
                 portNumber,
                 sqlManager: sql,
-                getJobNumber: () => Dispatcher.Invoke(() => txtJobNumber.Text),
                 machineId: machineId
             );
 
@@ -296,7 +302,7 @@ namespace CMC_Logiwa
 
             var answer = MessageBox.Show(this,
                 "The machine is still connected. Disconnect and exit?",
-                "Exit CMC Control System",
+                "Exit CMC Logiwa",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,
                 MessageBoxResult.No);
@@ -309,193 +315,166 @@ namespace CMC_Logiwa
             Close();
         }
 
-        // ===== Wave import =====
+        // ===== Duplicate scans: reset or reject =====
 
-        private async void cmbSelectWave_DropDownOpened(object sender, EventArgs e)
+        /// <summary>
+        /// Lists tracking numbers scanned again after they were processed (last 24 h) that nobody has
+        /// reset or rejected yet. Refreshed every few seconds while the window is open.
+        /// </summary>
+        private async Task RefreshDuplicatesAsync()
         {
-            string previous = (cmbSelectWave.SelectedItem as WaveList)?.waveNumber;
-            ShowWaveHint("Loading waves…");
+            if (_refreshingDuplicates)
+                return;
+            _refreshingDuplicates = true;
 
             try
             {
-                var requestBody = new
+                DataTable dt = await Task.Run(() => new SQLManager().ExecuteStoredProcedure(
+                    "dbo.sp_List_RecentDuplicates", new Dictionary<string, object> { { "@Hours", 24 } }));
+
+                string selected = (lstDuplicates.SelectedItem as DuplicateItem)?.OrderNumber;
+
+                var items = new List<DuplicateItem>();
+                foreach (DataRow row in dt.Rows)
                 {
-                    waveType = "Orders",
-                    operation = "packing",
-                    warehouseCode = "B",
-                    waveStatuses = new[] { "Pendig", "Started" },
-                    operationStatuses = new[] { "Pending", "Started" }
-                };
+                    string order = row["OrderNumber"]?.ToString();
+                    string status = row["OrderStatus"] == DBNull.Value ? "archived" : row["OrderStatus"].ToString();
+                    DateTime last = Convert.ToDateTime(row["LastScan"]);
+                    int scans = Convert.ToInt32(row["Scans"]);
 
-                var waveNumbers = await FetchWaveNumbers(ApiEndpoints.GetListAllWavesByTypeAndStatuses, requestBody);
-
-                cmbSelectWave.ItemsSource = waveNumbers;
-                cmbSelectWave.SelectedItem = waveNumbers.FirstOrDefault(w => w.waveNumber == previous);
-                ShowWaveHint(waveNumbers.Count == 0 ? "No available waves." : null);
-            }
-            catch (Exception ex)
-            {
-                cmbSelectWave.ItemsSource = null;
-                ShowWaveHint("Could not load waves.");
-                MessageBox.Show(this, ex.Message, "Could not load waves", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-        private void ShowWaveHint(string text)
-        {
-            txtWaveHint.Text = string.IsNullOrEmpty(text) ? " " : text; // keep the line reserved so the cards below do not jump
-            txtWaveHint.Visibility = string.IsNullOrEmpty(text) ? Visibility.Hidden : Visibility.Visible;
-        }
-
-        private async Task<List<WaveList>> FetchWaveNumbers(string apiUrl, object body)
-        {
-            using (var req = new HttpRequestMessage(HttpMethod.Post, apiUrl))
-            {
-                req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-                req.Headers.Add("API-Key", SessionVariables.ApiKey);
-                req.Headers.Add("User-Email", SessionVariables.UserEmail);
-
-                using (var resp = await Http.SendAsync(req))
-                {
-                    resp.EnsureSuccessStatusCode();
-                    var json = await resp.Content.ReadAsStringAsync();
-
-                    var waves = JsonSerializer.Deserialize<List<WaveList>>(json) ?? new List<WaveList>();
-
-                    return waves
-                        .Where(w => !string.IsNullOrWhiteSpace(w.waveNumber))
-                        .OrderBy(w => w.waveNumber, StringComparer.OrdinalIgnoreCase)
-                        .ToList();
-                }
-            }
-        }
-
-        private async void btnImportData_Click(object sender, RoutedEventArgs e)
-        {
-            object originalContent = btnImportData.Content;
-            btnImportData.IsEnabled = false;
-            btnImportData.Content = "Importing…";
-            Mouse.OverrideCursor = Cursors.Wait;
-
-            try
-            {
-                string selectedWaveText = (cmbSelectWave.SelectedItem as WaveList)?.waveNumber;
-                string warehouseCode = "B"; // change to "F" if needed for this screen/process
-
-                if (string.IsNullOrWhiteSpace(selectedWaveText))
-                {
-                    MessageBox.Show(this, "Please select a wave number.", "Wave import",
-                        MessageBoxButton.OK, MessageBoxImage.Information);
-                    return;
-                }
-
-                _ordersInMemory = await _waveApiService.RequestCMCPackingTaskAsync(warehouseCode, selectedWaveText, true);
-
-                if (_ordersInMemory == null || _ordersInMemory.Count == 0)
-                {
-                    MessageBox.Show(this, "No orders returned from RequestCMCPackingTask.", "Wave import",
-                        MessageBoxButton.OK, MessageBoxImage.Information);
-                    return;
-                }
-
-                int totalOrders = _ordersInMemory.Count;
-                int totalRowsSaved = 0;
-                int failedOrders = 0;
-                StringBuilder errorLog = new StringBuilder();
-
-                int done = 0;
-                foreach (string fulfilmentNumber in _ordersInMemory)
-                {
-                    btnImportData.Content = $"Importing {++done} of {totalOrders}…";
-                    try
+                    items.Add(new DuplicateItem
                     {
-                        var processResult = await _waveApiService.ProcessCMCPackingTaskAsync(
-                            fulfilmentNumber,
-                            warehouseCode,
-                            selectedWaveText);
-
-                        int rowsSaved = _waveApiService.SaveProcessResultToSql(
-                            fulfilmentNumber,
-                            processResult.data);
-
-                        totalRowsSaved += rowsSaved;
-                    }
-                    catch (Exception ex)
-                    {
-                        failedOrders++;
-                        errorLog.AppendLine($"Order {fulfilmentNumber}: {ex.Message}");
-                    }
+                        OrderNumber = order,
+                        Text = $"{order}   ·   {status}   ·   {last:HH:mm:ss}" + (scans > 1 ? $"   ({scans}×)" : "")
+                    });
                 }
 
-                string finalMessage =
-                    $"Import complete.{Environment.NewLine}" +
-                    $"Orders processed: {totalOrders}{Environment.NewLine}" +
-                    $"Rows saved to SQL: {totalRowsSaved}{Environment.NewLine}" +
-                    $"Failed orders: {failedOrders}";
+                lstDuplicates.ItemsSource = items;
+                lstDuplicates.SelectedItem = items.FirstOrDefault(i => i.OrderNumber == selected);
 
-                if (failedOrders > 0)
-                {
-                    finalMessage += $"{Environment.NewLine}{Environment.NewLine}Errors:{Environment.NewLine}{errorLog}";
-                }
-
-                MessageBox.Show(this, finalMessage, "Wave import", MessageBoxButton.OK,
-                    failedOrders > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+                lblDuplicatesHint.Text = items.Count == 0 ? "No duplicate scans waiting." : $"{items.Count} waiting.";
             }
-            catch (Exception ex)
+            catch
             {
-                MessageBox.Show(this, ex.Message, "Wave import failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                lblDuplicatesHint.Text = "Cannot read the duplicate list.";
             }
             finally
             {
-                btnImportData.Content = originalContent;
-                btnImportData.IsEnabled = true;
-                Mouse.OverrideCursor = null;
+                _refreshingDuplicates = false;
             }
+        }
+
+        private async void btnResetSelected_Click(object sender, RoutedEventArgs e)
+        {
+            var item = lstDuplicates.SelectedItem as DuplicateItem;
+            if (item == null)
+            {
+                MessageBox.Show(this, "Select a duplicate scan first.", "Reset", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (ConfirmReset(item.OrderNumber))
+            {
+                ResetOrder(item.OrderNumber);
+                await RefreshDuplicatesAsync();
+            }
+        }
+
+        private async void btnRejectSelected_Click(object sender, RoutedEventArgs e)
+        {
+            var item = lstDuplicates.SelectedItem as DuplicateItem;
+            if (item == null)
+            {
+                MessageBox.Show(this, "Select a duplicate scan first.", "Reject", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            try
+            {
+                new SQLManager().ExecuteStoredProcedure("dbo.sp_Reject_ByOrder", new Dictionary<string, object>
+                {
+                    { "@OrderNumber", item.OrderNumber },
+                    { "@User", SessionVariables.UserName }
+                });
+                AppendLog($"INFO: Duplicate {item.OrderNumber} rejected.");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Reject failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+
+            await RefreshDuplicatesAsync();
         }
 
         // ===== Reset order =====
 
-        private void btnResetOrderNumber_Click(object sender, RoutedEventArgs e)
+        private async void btnResetOrderNumber_Click(object sender, RoutedEventArgs e)
+        {
+            string orderNumber = txtResetOrderNumber.Text.Trim();
+
+            if (string.IsNullOrWhiteSpace(orderNumber))
+            {
+                MessageBox.Show(this, "Enter the tracking number to reset.", "Reset order",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                txtResetOrderNumber.Focus();
+                return;
+            }
+
+            if (!ConfirmReset(orderNumber))
+                return;
+
+            if (ResetOrder(orderNumber))
+            {
+                txtResetOrderNumber.Clear();
+                txtResetOrderNumber.Focus();
+            }
+            await RefreshDuplicatesAsync();
+        }
+
+        private bool ConfirmReset(string orderNumber) =>
+            MessageBox.Show(this,
+                $"Reset {orderNumber} so it can be processed again?\n\nThe previous result stays in the history.",
+                "Reset order",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) == MessageBoxResult.Yes;
+
+        /// <summary>Creates a new Ready record for the tracking number (any operator may do this). Returns true on success.</summary>
+        private bool ResetOrder(string orderNumber)
         {
             try
             {
-                string orderNumber = txtResetOrderNumber.Text.Trim();
-
-                if (string.IsNullOrWhiteSpace(orderNumber))
+                DataTable dt = new SQLManager().ExecuteStoredProcedure("dbo.sp_Reset_ByOrder", new Dictionary<string, object>
                 {
-                    MessageBox.Show(this, "Enter the order number to reset.", "Reset order",
-                        MessageBoxButton.OK, MessageBoxImage.Information);
-                    txtResetOrderNumber.Focus();
-                    return;
+                    { "@OrderNumber", orderNumber },
+                    { "@User", SessionVariables.UserName }
+                });
+
+                string outcome = dt.Rows.Count > 0 ? dt.Rows[0]["Result"]?.ToString() : null;
+
+                switch (outcome)
+                {
+                    case "OK":
+                        AppendLog($"INFO: {orderNumber} reset (new record {dt.Rows[0]["NewPackJobID"]}).");
+                        return true;
+                    case "NOT_FOUND":
+                        MessageBox.Show(this, $"{orderNumber} was not found.", "Reset order",
+                            MessageBoxButton.OK, MessageBoxImage.Information);
+                        return false;
+                    case "NOTHING_TO_RESET":
+                        MessageBox.Show(this, $"{orderNumber} has not been processed yet, so there is nothing to reset.",
+                            "Reset order", MessageBoxButton.OK, MessageBoxImage.Information);
+                        return false;
+                    default:
+                        MessageBox.Show(this, "The reset did not return a result.", "Reset order",
+                            MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return false;
                 }
-
-                var confirm = MessageBox.Show(this,
-                    $"Reset order {orderNumber} in the CMC database?",
-                    "Reset order",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Warning,
-                    MessageBoxResult.No);
-
-                if (confirm != MessageBoxResult.Yes)
-                    return;
-
-                var parameters = new Dictionary<string, object>
-                {
-                    { "@OrderNumber", orderNumber }
-                };
-
-                SQLManager sqlManager = new SQLManager();
-
-                sqlManager.ExecuteStoredProcedure("sp_Reset_Order", parameters);
-
-                AppendLog($"INFO: Order {orderNumber} reset.");
-
-                txtResetOrderNumber.Clear();
-                txtResetOrderNumber.Focus();
             }
             catch (Exception ex)
             {
                 MessageBox.Show(this, ex.Message, "Reset order failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
             }
         }
     }

@@ -271,7 +271,6 @@ namespace CMC_Logiwa.Services
 
         private readonly FormatProcessMessages _formatter;
         private readonly SQLManager _sqlManager;
-        private readonly Func<string> _getJobNumber;
 
         public event Action<string> OnMessageReceived;
         public event Action<string> OnMessageSent;
@@ -285,14 +284,13 @@ namespace CMC_Logiwa.Services
         public bool IsConnected => _client?.Connected == true;
        
 
-        public NetworkManager(string serverIp, int port, SQLManager sqlManager, Func<string> getJobNumber, string machineId)
+        public NetworkManager(string serverIp, int port, SQLManager sqlManager, string machineId)
         {
             ServerIp = serverIp;
             Port = port;
 
             _formatter = new FormatProcessMessages();
             _sqlManager = sqlManager ?? throw new ArgumentNullException(nameof(sqlManager));
-            _getJobNumber = getJobNumber ?? throw new ArgumentNullException(nameof(getJobNumber));
             MachineId = machineId;
         }
 
@@ -402,7 +400,7 @@ namespace CMC_Logiwa.Services
             }
 
             // FIX: call MessageRouter.Handle that supports HBT + ENQ
-            await MessageRouter.Handle(result, this, _formatter, _sqlManager, _getJobNumber);
+            await MessageRouter.Handle(result, this, _formatter, _sqlManager);
         }
         //private async Task SendHeartbeatLoopAsync(CancellationToken token)
         //{

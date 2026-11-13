@@ -1,25 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace CMC_Logiwa.Models
+﻿namespace CMC_Logiwa.Models
 {
+    /// <summary>Who is signed in on this PC (set by the login window, read by the handlers to stamp records).</summary>
     public static class SessionVariables
     {
-        public static string ApiKey { get; set; }
-        public static string Warehouse { get; set; }
-        public static string WarehouseCode { get; set; }
-        public static int WarehouseID { get; set; }
-        public static string UserEmail { get; set; }
-    }
-    public class WaveList
-    {
-        public int waveID { get; set; }
-        public string waveNumber { get; set; }
-
-        // The themed ComboBox selection box shows the item's text, so give it the wave number.
-        public override string ToString() => waveNumber;
+        public static string UserName { get; set; }
     }
 }

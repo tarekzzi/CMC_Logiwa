@@ -235,14 +235,13 @@ namespace CMC_Logiwa
             string machineId,
             string counter,
             string barcode,
-            string jobNumber,
             int result01,
             string matchLab,
             string packJobId,
             string description = null)
         {
             string reference = packJobId ?? "";
-            description = description ?? jobNumber ?? "";
+            description = description ?? "";
             string matchLabSafe = matchLab ?? "";
 
             return string.Join("|", new[]

@@ -126,9 +126,8 @@ namespace CMC_Logiwa
                     return;
                 }
 
-                // Temporary: MainWindow still carries the V1 wave-import parameters (removed in a later step).
-                SessionVariables.UserEmail = username;
-                var next = new MainWindow("", "Local", "", username, 0);
+                SessionVariables.UserName = username;
+                var next = new MainWindow(username);
 
                 Hide();
                 next.Closed += (s, args) => Close();

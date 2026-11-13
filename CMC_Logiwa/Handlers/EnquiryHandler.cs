@@ -7,19 +7,21 @@ using System.Threading.Tasks;
 
 namespace CMC_Logiwa.Handlers
 {
+    /// <summary>
+    /// ENQ (barcode scan). The scanned value is the carrier tracking number. The local database decides
+    /// (sp_ENQ_Get_Data): OK, NOT_FOUND, DUPLICATE or NO_LABEL, and the machine panel shows the description.
+    /// </summary>
     public class EnquiryHandler
     {
         private readonly NetworkManager _networkManager;
         private readonly FormatProcessMessages _formatter;
         private readonly SQLManager _sql;
-        private readonly Func<string> _getJobNumber;
 
-        public EnquiryHandler(NetworkManager networkManager, FormatProcessMessages formatter, SQLManager sql, Func<string> getJobNumber)
+        public EnquiryHandler(NetworkManager networkManager, FormatProcessMessages formatter, SQLManager sql)
         {
             _networkManager = networkManager;
             _formatter = formatter;
             _sql = sql;
-            _getJobNumber = getJobNumber;
         }
 
         public async Task Handle(MessageProcessingResult result)
@@ -27,52 +29,51 @@ namespace CMC_Logiwa.Handlers
             if (result == null || !result.IsRequest || result.MessageType != "ENQ")
                 return;
 
-            string jobNumber = _getJobNumber?.Invoke() ?? "";
-
-            var parameters = new Dictionary<string, object>
-            {
-                { "@Barcode", result.Barcode },
-                { "@JobNumber", jobNumber },
-                { "@Counter", result.Counter }
-            };
-
-            DataTable dt = _sql.ExecuteStoredProcedure("dbo.sp_ENQ_Get_Data", parameters);
-
             string matchLab = "";
             string packJobId = "";
             int result01 = 0;
-            string description = null;
+            string description;
 
-            if (dt != null && dt.Rows.Count > 0 && dt.Columns.Contains("IsDuplicate")
-                && Convert.ToInt32(dt.Rows[0]["IsDuplicate"] == DBNull.Value ? 0 : dt.Rows[0]["IsDuplicate"]) == 1)
+            try
             {
-                // More than one open record matches this barcode: reject like "not found",
-                // and let the machine pop-up say why (MSG_DESCRIPTION is shown on the CMC panel).
-                packJobId = "";
-                matchLab = "";
-                result01 = 0;
-                description = "Duplicate Record";
+                var parameters = new Dictionary<string, object>
+                {
+                    { "@Barcode", result.Barcode },
+                    { "@Counter", result.Counter },
+                    { "@MachineId", result.MachineId },
+                    { "@User", SessionVariables.UserName }
+                };
+
+                DataTable dt = _sql.ExecuteStoredProcedure("dbo.sp_ENQ_Get_Data", parameters);
+
+                if (dt != null && dt.Rows.Count > 0)
+                {
+                    DataRow row = dt.Rows[0];
+                    string outcome = row["EnqResult"]?.ToString();
+                    description = row["Description"]?.ToString() ?? "";
+
+                    if (outcome == "OK")
+                    {
+                        packJobId = row["PackJobID"]?.ToString() ?? "";
+                        matchLab = row["MatchLab"]?.ToString() ?? "";
+                        result01 = 1;
+                    }
+                }
+                else
+                {
+                    description = "Not found, try again later";
+                }
             }
-            else if (dt != null && dt.Rows.Count > 0)
+            catch
             {
-                packJobId = dt.Rows[0]["PackJobID"]?.ToString() ?? "";
-                matchLab = dt.Rows[0]["MatchLab"]?.ToString() ?? "";
-                result01 = 1;
-            }
-            else
-            {
-                // No SQL match found
-                packJobId = "";
-                matchLab = "";
-                result01 = 0;
-                description = "Not Found";
+                // The machine must always get its reply, even if the database is unreachable.
+                description = "System error, try again";
             }
 
             string payload = _formatter.FormatEnqResponse(
                 machineId: result.MachineId,
                 counter: result.Counter,
                 barcode: result.Barcode,
-                jobNumber: jobNumber,
                 result01: result01,
                 matchLab: matchLab,
                 packJobId: packJobId,

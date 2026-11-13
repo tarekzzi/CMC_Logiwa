@@ -127,10 +127,6 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Models\ProcessCMCPackingTaskResponse.cs" />
-    <Compile Include="Models\RequestCMCPackingTaskRequest.cs" />
-    <Compile Include="Models\UpdateShipmentInfoRequest.cs" />
-    <Compile Include="Services\AuthenticationService.cs" />
     <Compile Include="Services\LocalAuthService.cs" />
     <Compile Include="Services\DbSettings.cs" />
     <Compile Include="DbSettingsWindow.xaml.cs">
@@ -144,7 +140,6 @@
     <Compile Include="Handlers\LabHandler.cs" />
     <Compile Include="Handlers\PrnResultHandler.cs" />
     <Compile Include="Handlers\RemHandler.cs" />
-    <Compile Include="Helpers\ApiEndpoints.cs" />
     <Compile Include="LoginWindow.xaml.cs">
       <DependentUpon>LoginWindow.xaml</DependentUpon>
     </Compile>
@@ -163,9 +158,7 @@
     <Compile Include="Services\FormatProcessMessages.cs" />
     <Compile Include="Services\MessageRouter.cs" />
     <Compile Include="Services\NetworkManager.cs" />
-    <Compile Include="Services\ShipmentApiService.cs" />
     <Compile Include="Services\SLQManager.cs" />
-    <Compile Include="Services\WaveApiService.cs" />
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
