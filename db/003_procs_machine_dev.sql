@@ -219,20 +219,30 @@ BEGIN
 END
 GO
 
-/* REM (carton removed from the machine). Local only. */
+/* REM (carton removed from the machine, for any reason incl. a forced reject at the machine). Local only.
+   The REM message carries no reason, so the record gets machine event 010 "Box Removed" (text from dbo.Events).
+   Returns the tracking number so the front panel can name the carton.                                       */
 CREATE OR ALTER PROCEDURE dbo.sp_Update_REM
     @PackJobID INT
 AS
 BEGIN
     SET NOCOUNT ON;
 
+    DECLARE @EventText NVARCHAR(100);
+    SELECT TOP (1) @EventText = EventText FROM dbo.Events WHERE EventCode = N'010';
+    SET @EventText = ISNULL(@EventText, N'Box Removed');
+
     UPDATE dbo.PackJob
     SET OrderStatus = N'Removed',
+        BoxEventID = N'010',
+        BoxEventText = @EventText,
         ProcessCompletedDateTime = SYSDATETIME()
     WHERE PackJobID = @PackJobID;
 
     INSERT dbo.PackJobEvent(PackJobID, OrderNumber, EventType, MachineId, Detail)
-    SELECT PackJobID, OrderNumber, N'REM', MachineId, N'Carton removed'
+    SELECT PackJobID, OrderNumber, N'REM', MachineId, LEFT(N'Carton removed: ' + @EventText + N' (010)', 400)
     FROM dbo.PackJob WHERE PackJobID = @PackJobID;
+
+    SELECT OrderNumber FROM dbo.PackJob WHERE PackJobID = @PackJobID;
 END
 GO

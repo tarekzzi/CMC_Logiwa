@@ -2,6 +2,7 @@
 using CMC_Logiwa.Services;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Threading.Tasks;
 
 namespace CMC_Logiwa.Handlers
@@ -32,6 +33,7 @@ namespace CMC_Logiwa.Handlers
                 return;
 
             string dbError = null;
+            string orderNumber = null;
             try
             {
                 var parameters = new Dictionary<string, object>
@@ -39,7 +41,9 @@ namespace CMC_Logiwa.Handlers
                     { "@PackJobID", packJobId }
                 };
 
-                _sql.ExecuteStoredProcedure("dbo.sp_Update_REM", parameters);
+                DataTable dt = _sql.ExecuteStoredProcedure("dbo.sp_Update_REM", parameters);
+                if (dt != null && dt.Rows.Count > 0 && dt.Columns.Contains("OrderNumber"))
+                    orderNumber = dt.Rows[0]["OrderNumber"]?.ToString();
             }
             catch (Exception ex)
             {
@@ -55,10 +59,11 @@ namespace CMC_Logiwa.Handlers
 
             await _networkManager.SendAsync(responsePayload);
 
+            string who = string.IsNullOrEmpty(orderNumber) ? $"job {packJobId}" : orderNumber;
             if (dbError != null)
-                _networkManager.LogError($"job {packJobId}: removal could not be saved ({dbError})");
+                _networkManager.LogError($"{who}: removal could not be saved ({dbError})");
             else
-                _networkManager.LogError($"job {packJobId}: carton removed from the machine");
+                _networkManager.LogError($"{who}: carton removed from the machine (Box Removed, 010)");
         }
     }
 }
