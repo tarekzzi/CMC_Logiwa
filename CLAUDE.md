@@ -1,24 +1,26 @@
 # CLAUDE.md
 
+> **Work in progress.** CMC_Logiwa is the successor of CMC_VER1 (same machine protocol; no wave import, no 3PLWMS; orders come from the web VM instead). Sections below that mention the wave import, 3PLWMS login/API or the `CMC` database still describe V1 and are being rewritten as the new version is built. Done so far: local login (`LocalAuthService`), per-PC Database settings (`DbSettings`, DPAPI file under ProgramData), SQL scripts in `db/` (run order 001, 000, 002). Design: `CMC_VER1DOCCMC_Logiwa-design-v1.md`. Database: `Local_CMC_Logiwa_DEV` / `_PRO`, SQL logins `CMC_Logiwa_app_dev` / `_pro`.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Overview
 
-CMC_VER1 is a WPF desktop app (.NET Framework 4.7.2, old-style `.csproj` + `packages.config`) that acts as the bridge between a **CMC CartonWrap packing machine** (TCP socket protocol) and the **3PLWMS WMS API** (`api1.3plwms.com.au`), using a local SQL Server database (`CMC`) as the working store. There are no tests.
+CMC_Logiwa is a WPF desktop app (.NET Framework 4.7.2, old-style `.csproj` + `packages.config`) that acts as the bridge between a **CMC CartonWrap packing machine** (TCP socket protocol) and the **3PLWMS WMS API** (`api1.3plwms.com.au`), using a local SQL Server database (`CMC`) as the working store. There are no tests.
 
 ## Build / run
 
-Run from the solution directory (`CMC_VER1/`, the one containing `CMC_VER1.sln`):
+Run from the solution directory (`CMC_Logiwa/`, the one containing `CMC_Logiwa.sln`):
 
 ```
-nuget restore CMC_VER1.sln
-msbuild CMC_VER1.sln /p:Configuration=Debug
-CMC_VER1\bin\Debug\CMC_VER1.exe
+nuget restore CMC_Logiwa.sln
+msbuild CMC_Logiwa.sln /p:Configuration=Debug
+CMC_Logiwa\bin\Debug\CMC_Logiwa.exe
 ```
 
 - Needs Visual Studio / Build Tools MSBuild (not `dotnet build` — this is a non-SDK project). NuGet packages live in the solution-level `packages/` folder.
-- New `.cs` files must be added as `<Compile Include=...>` entries in `CMC_VER1/CMC_VER1.csproj`; they are not picked up automatically.
-- Deployment is ClickOnce (`publish/`, manifests signed with `CMC_VER1_TemporaryKey.pfx`).
+- New `.cs` files must be added as `<Compile Include=...>` entries in `CMC_Logiwa/CMC_Logiwa.csproj`; they are not picked up automatically.
+- Deployment is ClickOnce (`publish/`, manifests signed with `the CMC_Logiwa signing certificate (CN=CMC_Logiwa, in the Windows user certificate store, thumbprint set in the csproj)`).
 - The app needs network access to the SQL Server named in `App.config` (`CMCConnection`, currently `CMC_Control\CMC_Control`; alternative dev connection strings are commented out there) and to the WMS API.
 
 ## Architecture
@@ -56,6 +58,6 @@ The `Reference` field carries the PackJobID assigned at ENQ time. Handlers swall
 ## Conventions / gotchas
 
 - Many files contain an older version of the whole file commented out at the top; the live code is below it.
-- UI is WPF. All colours, fonts and control styles (primary/secondary/danger buttons, text boxes, combo box, scroll bars) live in `Theme.xaml`, merged in `App.xaml`; use its brushes/styles rather than hard-coding colours. New XAML files must be added to `CMC_VER1.csproj` as `<Page Include=...>` (code-behind as `<Compile>` with `DependentUpon`). Per-monitor DPI awareness is declared in `app.manifest`. The implicit `TextBlock` style is deliberately absent: setting Foreground there overrides button text colours — set `Foreground` on the window instead.
+- UI is WPF. All colours, fonts and control styles (primary/secondary/danger buttons, text boxes, combo box, scroll bars) live in `Theme.xaml`, merged in `App.xaml`; use its brushes/styles rather than hard-coding colours. New XAML files must be added to `CMC_Logiwa.csproj` as `<Page Include=...>` (code-behind as `<Compile>` with `DependentUpon`). Per-monitor DPI awareness is declared in `app.manifest`. The implicit `TextBlock` style is deliberately absent: setting Foreground there overrides button text colours — set `Foreground` on the window instead.
 - Two JSON libraries are in use: `Newtonsoft.Json` (auth) and `System.Text.Json` (wave/shipment APIs).
 - This folder is its own git repo, but it sits inside an unrelated repo rooted at `C:\Users\tarek\Desktop`; run git commands from here, never from a parent folder.
