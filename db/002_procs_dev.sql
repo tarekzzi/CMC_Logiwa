@@ -206,7 +206,7 @@ BEGIN
 
     UPDATE TOP (1) dbo.PackJob
     SET OrderStatus = N'InProgress', ProcessStartedDateTime = SYSDATETIME(),
-        MachineId = @MachineId, ProcessedByUser = @User
+        PackID = LEFT(@Counter, 20), MachineId = @MachineId, ProcessedByUser = @User
     OUTPUT inserted.PackJobID, inserted.MatchLab INTO @claimed
     WHERE OrderNumber = @bc AND IsCurrent = 1 AND OrderStatus = N'Ready';
 

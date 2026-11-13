@@ -190,6 +190,15 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_LabelRequest_Order' A
     CREATE INDEX IX_LabelRequest_Order ON dbo.LabelRequest(OrderNumber, Status);
 GO
 
+/* ------------------------------------------------------------------ Events
+   Machine event codes -> text (same idea as V1 dbo.Events). Filled from V1 with DOC\v1-events.sql. */
+IF OBJECT_ID(N'dbo.Events', N'U') IS NULL
+CREATE TABLE dbo.Events(
+    EventCode  nvarchar(20)  NOT NULL CONSTRAINT PK_Events PRIMARY KEY,
+    EventText  nvarchar(100) NULL
+);
+GO
+
 /* ------------------------------------------------------------- SyncState (single row) */
 IF OBJECT_ID(N'dbo.SyncState', N'U') IS NULL
 BEGIN
