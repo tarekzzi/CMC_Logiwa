@@ -186,8 +186,11 @@ namespace CMC_Logiwa.Services
                 }
                 else
                 {
-                    sql.ExecuteStoredProcedure("dbo.sp_LabelReq_MarkFailed", new Dictionary<string, object>
-                        { { "@RequestId", id }, { "@Error", "Not known on the web service yet." } });
+                    // Logiwa has no order for this tracking number (or it cannot be pinned down): close the request.
+                    // Scanning it again after a couple of minutes asks again.
+                    sql.ExecuteStoredProcedure("dbo.sp_LabelReq_MarkDone", new Dictionary<string, object>
+                        { { "@RequestId", id }, { "@Note", "Logiwa does not know this tracking number." } });
+                    OnLog?.Invoke($"INFO: Logiwa has no order for {tracking}.");
                 }
             }
         }

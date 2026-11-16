@@ -251,6 +251,13 @@ BEGIN
 
     INSERT dbo.PackJobEvent(OrderNumber, EventType, UserName, MachineId, Detail)
     VALUES (@bc, N'NotFound', @User, @MachineId, N'Scan not found');
+
+    -- Ask the web VM to look this tracking number up in Logiwa (one open request per tracking number, and not again
+    -- within 2 minutes of the last one sent). A missed webhook is recovered this way.
+    IF @bc <> N'' AND NOT EXISTS (SELECT 1 FROM dbo.LabelRequest
+                   WHERE OrderNumber = @bc
+                     AND (Status = N'Pending' OR RequestedAt > DATEADD(MINUTE, -2, SYSDATETIME()))) -- also after a closed (Done) request
+        INSERT dbo.LabelRequest(OrderNumber, MachineId) VALUES (@bc, @MachineId);
     SELECT N'NOT_FOUND' AS EnqResult, CAST(NULL AS int) AS PackJobID, CAST(NULL AS nvarchar(100)) AS MatchLab,
            N'Not found, try again later' AS Description;
 END
@@ -431,6 +438,18 @@ AS
 BEGIN
     SET NOCOUNT ON;
     UPDATE dbo.LabelRequest SET Status = N'Sent', SentAt = SYSDATETIME(), LastError = NULL, NextAttemptAt = NULL
+    WHERE RequestId = @RequestId AND Status = N'Pending';
+END
+GO
+
+/* The web VM answered that Logiwa does not know this tracking number: close the request. A new scan makes a new one. */
+CREATE OR ALTER PROCEDURE dbo.sp_LabelReq_MarkDone
+    @RequestId int,
+    @Note      nvarchar(400) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE dbo.LabelRequest SET Status = N'Done', LastError = LEFT(@Note, 400), NextAttemptAt = NULL
     WHERE RequestId = @RequestId AND Status = N'Pending';
 END
 GO

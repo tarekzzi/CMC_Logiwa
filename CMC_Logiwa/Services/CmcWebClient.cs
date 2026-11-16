@@ -22,7 +22,7 @@ namespace CMC_Logiwa.Services
     {
         /// <summary>Accepted (202): the web VM will fetch or resend the label.</summary>
         Accepted,
-        /// <summary>404: the order has not reached the web VM yet. Try again later.</summary>
+        /// <summary>404: Logiwa has no order for this tracking number (the web VM looked it up). The request is closed.</summary>
         NotKnownYet
     }
 
