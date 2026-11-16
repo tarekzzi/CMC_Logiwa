@@ -22,6 +22,14 @@ namespace CMC_Logiwa.Services
         public string User { get; set; }
         public string Password { get; set; }
 
+        /// <summary>Web VM address (https) and this PC's API key for it. Empty = web sync is off. Files saved before this existed load with both empty.</summary>
+        public string WebServiceUrl { get; set; }
+        public string ApiKey { get; set; }
+
+        public bool HasWebService => !string.IsNullOrWhiteSpace(WebServiceUrl) && !string.IsNullOrWhiteSpace(ApiKey);
+
+        public static string DefaultWebServiceUrl(string env) => env == Pro ? "" : "https://logiwacmcdev.fulfilmentaustralia.com.au";
+
         public static string DefaultDatabase(string env) => env == Pro ? "Local_CMC_Logiwa_PRO" : "Local_CMC_Logiwa_DEV";
         public static string DefaultUser(string env) => env == Pro ? "CMC_Logiwa_app_pro" : "CMC_Logiwa_app_dev";
 

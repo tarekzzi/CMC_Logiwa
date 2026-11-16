@@ -83,10 +83,50 @@ namespace CMC_Logiwa
             _duplicatesTimer.Tick += async (s, e) => await RefreshDuplicatesAsync();
             Loaded += async (s, e) =>
             {
+                StartWebSync();
                 await RefreshDuplicatesAsync();
                 _duplicatesTimer.Start();
             };
-            Closed += (s, e) => _duplicatesTimer.Stop();
+            Closed += (s, e) =>
+            {
+                _duplicatesTimer.Stop();
+                _sync?.Stop();
+            };
+        }
+
+        // ===== Web sync (orders and labels from the web VM, label requests back) =====
+
+        private OrderSyncService _sync;
+
+        private void StartWebSync()
+        {
+            _sync = new OrderSyncService(txtMachineId.Text.Trim());
+            _sync.OnLog += AppendLog;
+            _sync.OnStatus += s => Dispatcher.BeginInvoke(new Action(() => ShowSyncStatus(s)));
+            _sync.Start();
+        }
+
+        private void ShowSyncStatus(SyncStatus s)
+        {
+            string text;
+            Brush brush = Res("MutedBrush");
+
+            if (!s.Configured)
+                text = "Web sync is off: set the web service address and API key in Database settings.";
+            else if (s.Error != null)
+            {
+                text = "Web sync problem: " + s.Error;
+                brush = Res("DangerBrush");
+            }
+            else
+            {
+                text = "Web sync OK " + (s.LastOk.HasValue ? s.LastOk.Value.ToString("HH:mm:ss") : "");
+                if (s.PendingLabelRequests > 0) text += $"  ·  {s.PendingLabelRequests} label request(s) waiting";
+            }
+
+            lblSync.Text = text;
+            lblSync.Foreground = brush;
+            lblSync.ToolTip = text;
         }
 
         private Brush Res(string key) => (Brush)FindResource(key);

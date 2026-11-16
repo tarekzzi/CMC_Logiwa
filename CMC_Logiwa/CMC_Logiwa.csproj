@@ -127,6 +127,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Services\CmcWebClient.cs" />
+    <Compile Include="Services\OrderSyncService.cs" />
     <Compile Include="Services\LocalAuthService.cs" />
     <Compile Include="Services\DbSettings.cs" />
     <Compile Include="DbSettingsWindow.xaml.cs">

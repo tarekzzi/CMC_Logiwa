@@ -33,6 +33,18 @@
                 <TextBlock x:Name="lblPasswordHint" Style="{StaticResource MutedText}" Margin="0,0,0,12"
                            Text="Leave blank to keep the saved password." Visibility="Collapsed" />
 
+                <TextBlock Text="Web service (labels from Logiwa)" FontWeight="SemiBold" Margin="0,8,0,2" />
+                <TextBlock Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,10"
+                           Text="Where this PC gets its orders and labels. Leave both empty to run without it." />
+
+                <Label Content="Web service _address" Target="{Binding ElementName=txtWebUrl}" />
+                <TextBox x:Name="txtWebUrl" Margin="0,0,0,12" />
+
+                <Label Content="_API key" Target="{Binding ElementName=txtApiKey}" />
+                <PasswordBox x:Name="txtApiKey" Margin="0,0,0,4" />
+                <TextBlock x:Name="lblApiKeyHint" Style="{StaticResource MutedText}" Margin="0,0,0,12"
+                           Text="Leave blank to keep the saved key." Visibility="Collapsed" />
+
                 <TextBlock x:Name="lblStatus" TextWrapping="Wrap" Margin="0,4,0,12" Visibility="Collapsed" />
 
                 <Button x:Name="btnSave" Content="Test and save" Style="{StaticResource PrimaryButton}"

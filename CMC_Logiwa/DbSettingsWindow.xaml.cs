@@ -28,6 +28,9 @@ namespace CMC_Logiwa
             txtServer.Text = _existing?.Server ?? "";
             txtDatabase.Text = _existing?.Database ?? DbSettings.DefaultDatabase(env);
             txtUser.Text = _existing?.User ?? DbSettings.DefaultUser(env);
+            txtWebUrl.Text = _existing != null ? _existing.WebServiceUrl ?? "" : DbSettings.DefaultWebServiceUrl(env);
+            if (!string.IsNullOrEmpty(_existing?.ApiKey))
+                lblApiKeyHint.Visibility = Visibility.Visible;
 
             if (firstRun)
                 lblIntro.Text = "This PC has no database settings yet. Choose the environment and enter the local database details. Saved encrypted on this PC only.";
@@ -54,7 +57,15 @@ namespace CMC_Logiwa
                 txtDatabase.Text = DbSettings.DefaultDatabase(SelectedEnvironment);
             if (string.IsNullOrWhiteSpace(txtUser.Text) || txtUser.Text == DbSettings.DefaultUser(other))
                 txtUser.Text = DbSettings.DefaultUser(SelectedEnvironment);
+            // The key belongs to one environment: never carry it over when the environment changes.
+            if (string.IsNullOrWhiteSpace(txtWebUrl.Text) || txtWebUrl.Text == DbSettings.DefaultWebServiceUrl(other))
+                txtWebUrl.Text = DbSettings.DefaultWebServiceUrl(SelectedEnvironment);
+            if (_existing != null && _existing.EnvironmentName != SelectedEnvironment)
+                lblApiKeyHint.Visibility = Visibility.Collapsed;
         }
+
+        // Set after a failed web service test: pressing Save again keeps the settings anyway (the web VM may just be down).
+        private bool _saveAnywayOffered;
 
         private async void btnSave_Click(object sender, RoutedEventArgs e)
         {
@@ -68,13 +79,32 @@ namespace CMC_Logiwa
                 Server = txtServer.Text.Trim(),
                 Database = txtDatabase.Text.Trim(),
                 User = txtUser.Text.Trim(),
-                Password = password
+                Password = password,
+                WebServiceUrl = txtWebUrl.Text.Trim()
             };
+
+            // Blank key = keep the saved one, but only for the same environment.
+            string apiKey = txtApiKey.Password.Trim();
+            if (apiKey.Length == 0 && _existing != null && _existing.EnvironmentName == settings.EnvironmentName)
+                apiKey = _existing.ApiKey ?? "";
+            settings.ApiKey = apiKey;
 
             if (settings.Server.Length == 0 || settings.Database.Length == 0 ||
                 settings.User.Length == 0 || string.IsNullOrEmpty(settings.Password))
             {
                 ShowStatus("Fill in the server, database, SQL login and password.", isError: true);
+                return;
+            }
+
+            bool anyWeb = settings.WebServiceUrl.Length > 0 || settings.ApiKey.Length > 0;
+            if (anyWeb && !settings.HasWebService)
+            {
+                ShowStatus("Fill in both the web service address and the API key, or leave both empty.", isError: true);
+                return;
+            }
+            if (settings.HasWebService && !settings.WebServiceUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                ShowStatus("The web service address must start with https://", isError: true);
                 return;
             }
 
@@ -87,6 +117,19 @@ namespace CMC_Logiwa
                 SetBusy(false);
                 ShowStatus(error, isError: true);
                 return;
+            }
+
+            if (settings.HasWebService && !_saveAnywayOffered)
+            {
+                ShowStatus("Testing the web service…", isError: false);
+                string webError = await TestWebServiceAsync(settings);
+                if (webError != null)
+                {
+                    _saveAnywayOffered = true;
+                    SetBusy(false);
+                    ShowStatus(webError + "\nPress “Test and save” again to save anyway.", isError: true);
+                    return;
+                }
             }
 
             try
@@ -126,6 +169,24 @@ namespace CMC_Logiwa
             }
         }
 
+        /// <summary>Returns null when the address and key are accepted, otherwise a readable reason.</summary>
+        private static async Task<string> TestWebServiceAsync(DbSettings settings)
+        {
+            try
+            {
+                using (var web = new CmcWebClient(settings))
+                using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(30)))
+                {
+                    await web.PingAsync(cts.Token);
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                return ex.Message;
+            }
+        }
+
         private void btnCancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 
         private void SetBusy(bool busy)
@@ -135,6 +196,8 @@ namespace CMC_Logiwa
             txtDatabase.IsEnabled = !busy;
             txtUser.IsEnabled = !busy;
             txtPassword.IsEnabled = !busy;
+            txtWebUrl.IsEnabled = !busy;
+            txtApiKey.IsEnabled = !busy;
             btnSave.IsEnabled = !busy;
             btnCancel.IsEnabled = !busy;
         }

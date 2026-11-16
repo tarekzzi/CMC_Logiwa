@@ -58,6 +58,11 @@ namespace CMC_Logiwa.Handlers
                         matchLab = row["MatchLab"]?.ToString() ?? "";
                         result01 = 1;
                     }
+                    else if (outcome == "NOT_FOUND" || outcome == "NO_LABEL")
+                    {
+                        // The reply does not wait for this: a rescan a few seconds later finds the order if it has arrived.
+                        OrderSyncService.RequestPoll();
+                    }
                 }
                 else
                 {
