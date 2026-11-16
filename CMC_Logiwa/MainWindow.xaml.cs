@@ -112,7 +112,7 @@ namespace CMC_Logiwa
             Brush brush = Res("MutedBrush");
 
             if (!s.Configured)
-                text = "Web sync is off: set the web service address and API key in Database settings.";
+                text = "Web sync is off: set the web service address and API key with the Settings button.";
             else if (s.Error != null)
             {
                 text = "Web sync problem: " + s.Error;
@@ -139,6 +139,7 @@ namespace CMC_Logiwa
             pillText.Text = connected ? "Connected" : "Not connected";
 
             btnStartConnection.IsEnabled = !connected;
+            btnSettings.IsEnabled = !connected;
             btnEndConnection.IsEnabled = connected;
             txtIPAddress.IsEnabled = !connected;
             txtPort.IsEnabled = !connected;
@@ -327,6 +328,19 @@ namespace CMC_Logiwa
         }
 
         // ===== Exit =====
+
+        /// <summary>Database and web service settings. Locked while connected to the machine: the open connection uses the old database.</summary>
+        private void btnSettings_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new DbSettingsWindow(firstRun: false) { Owner = this };
+            if (dlg.ShowDialog() != true)
+                return;
+
+            var settings = DbSettingsStore.Load();
+            lblSession.Text = settings == null ? SessionVariables.UserName : $"{settings.EnvironmentName}   ·   {SessionVariables.UserName}";
+            AppendLog("INFO: Settings saved.");
+            OrderSyncService.RequestPoll();   // the sync reads the settings on every run, so the new address and key apply now
+        }
 
         private void btnExit_Click(object sender, RoutedEventArgs e) => Close();
 

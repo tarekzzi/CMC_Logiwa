@@ -74,6 +74,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <TextBlock Grid.Column="0" Text="CMC Logiwa" FontSize="22" FontWeight="SemiBold"
@@ -91,7 +92,10 @@
                     </StackPanel>
                 </Border>
 
-                <Button x:Name="btnExit" Grid.Column="4" Content="E_xit" MinWidth="76" VerticalAlignment="Center"
+                <Button x:Name="btnSettings" Grid.Column="4" Content="_Settings" MinWidth="88" VerticalAlignment="Center" Margin="0,0,10,0"
+                        Style="{StaticResource SecondaryButton}" Click="btnSettings_Click" />
+
+                <Button x:Name="btnExit" Grid.Column="5" Content="E_xit" MinWidth="76" VerticalAlignment="Center"
                         Style="{StaticResource SecondaryButton}" Click="btnExit_Click" />
             </Grid>
         </Border>
