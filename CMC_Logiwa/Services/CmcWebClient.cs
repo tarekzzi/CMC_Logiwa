@@ -26,6 +26,19 @@ namespace CMC_Logiwa.Services
         NotKnownYet
     }
 
+    /// <summary>One measured box waiting to be sent: a row of sp_Outbox_GetNext. Millimetres and grams as the machine reported them.</summary>
+    public sealed class OutboxResult
+    {
+        public int PackJobId { get; set; }
+        public string TrackingNumber { get; set; }
+        public string MachineId { get; set; }
+        public int BoxWeightG { get; set; }
+        public int LengthMm { get; set; }
+        public int WidthMm { get; set; }
+        public int HeightMm { get; set; }
+        public DateTime CompletedAtLocal { get; set; }
+    }
+
     /// <summary>Thrown for any non-success answer or network failure. The message never contains the API key or label data.</summary>
     public sealed class CmcWebException : Exception
     {
@@ -66,7 +79,7 @@ namespace CMC_Logiwa.Services
 
         public async Task<OrdersPage> GetOrdersAsync(long afterSeq, int limit, CancellationToken ct)
         {
-            string body = await SendAsync(() => _http.GetAsync($"api/cmc/orders?afterSeq={afterSeq}&limit={limit}", ct), "orders");
+            string body = await SendAsync(() => _http.GetAsync($"api/cmc/orders?afterSeq={afterSeq}&limit={limit}", ct), "orders", ct);
 
             try
             {
@@ -110,13 +123,45 @@ namespace CMC_Logiwa.Services
             catch (Exception ex) { throw new CmcWebException("Cannot reach the web service: " + ex.Message, ex, unreachable: true); }
         }
 
+        /// <summary>
+        /// Sends what the machine measured for one box. Returns normally when the web service stored it (202) or already had it;
+        /// every other answer, and a network failure, is a CmcWebException so the caller retries later.
+        /// </summary>
+        public async Task PostResultAsync(OutboxResult result, CancellationToken ct)
+        {
+            string json = JsonConvert.SerializeObject(new
+            {
+                trackingNumber = result.TrackingNumber,
+                packJobId = result.PackJobId,
+                machineId = result.MachineId,
+                boxWeightG = result.BoxWeightG,
+                lengthMm = result.LengthMm,
+                widthMm = result.WidthMm,
+                heightMm = result.HeightMm,
+                completedAt = new DateTimeOffset(result.CompletedAtLocal)
+            });
+
+            try
+            {
+                using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
+                using (var resp = await _http.PostAsync("api/cmc/results", content, ct).ConfigureAwait(false))
+                {
+                    if (resp.IsSuccessStatusCode) return;
+                    throw new CmcWebException(Describe(resp.StatusCode));
+                }
+            }
+            catch (CmcWebException) { throw; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) { throw new CmcWebException("Cannot reach the web service: " + ex.Message, ex, unreachable: true); }
+        }
+
         /// <summary>Checks the address and the key without downloading any label: asks for orders after a sequence number that cannot exist.</summary>
         public async Task PingAsync(CancellationToken ct)
         {
-            await SendAsync(() => _http.GetAsync("api/cmc/orders?afterSeq=9223372036854775000&limit=1", ct), "ping");
+            await SendAsync(() => _http.GetAsync("api/cmc/orders?afterSeq=9223372036854775000&limit=1", ct), "ping", ct);
         }
 
-        private static async Task<string> SendAsync(Func<Task<HttpResponseMessage>> call, string what)
+        private static async Task<string> SendAsync(Func<Task<HttpResponseMessage>> call, string what, CancellationToken ct)
         {
             try
             {
@@ -127,8 +172,9 @@ namespace CMC_Logiwa.Services
                 }
             }
             catch (CmcWebException) { throw; }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex) { throw new CmcWebException("Cannot reach the web service: " + ex.Message, ex); }
+            // Only a cancel the caller asked for ends the run. A timeout is also an OperationCanceledException: that is "cannot reach".
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) { throw new CmcWebException("Cannot reach the web service: " + ex.Message, ex, unreachable: true); }
         }
 
         private static string Describe(HttpStatusCode code)

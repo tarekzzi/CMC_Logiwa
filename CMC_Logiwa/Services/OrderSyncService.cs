@@ -106,15 +106,33 @@ namespace CMC_Logiwa.Services
 
             using (var web = new CmcWebClient(settings))
             {
-                try
+                // Three independent jobs against the same web service. A problem in one does not skip the others, except
+                // when the web service cannot be reached at all: then the rest would only time out as well.
+                CmcWebException failure = null;
+                var steps = new Action[]
                 {
-                    await Task.Run(() => SyncOrders(sql, web, ct), ct).ConfigureAwait(false);
-                    await Task.Run(() => SendLabelRequests(sql, web, ct), ct).ConfigureAwait(false);
+                    () => SyncOrders(sql, web, ct),
+                    () => SendLabelRequests(sql, web, ct),
+                    () => SendResults(sql, web, ct)
+                };
+
+                foreach (var step in steps)
+                {
+                    try
+                    {
+                        await Task.Run(step, ct).ConfigureAwait(false);
+                    }
+                    catch (CmcWebException ex)
+                    {
+                        if (failure == null) failure = ex;
+                        if (ex.Unreachable) break;
+                    }
                 }
-                catch (CmcWebException ex)
+
+                if (failure != null)
                 {
-                    sql.ExecuteStoredProcedure("dbo.sp_Sync_SetError", new Dictionary<string, object> { { "@Error", Truncate(ex.Message, 400) } });
-                    Fail(ex.Message);
+                    sql.ExecuteStoredProcedure("dbo.sp_Sync_SetError", new Dictionary<string, object> { { "@Error", Truncate(failure.Message, 400) } });
+                    Fail(failure.Message);
                     return;
                 }
             }
@@ -215,6 +233,80 @@ namespace CMC_Logiwa.Services
 
             // Still report a web problem in the status line, but only after every request had its turn.
             if (webFailure != null) throw webFailure;
+        }
+
+        /// <summary>
+        /// Sends the measurements of finished boxes (the END handler queued them as PushStatus = Pending) to the web VM,
+        /// which writes them to Logiwa. Same rules as the label requests: oldest first, a failing result is recorded on
+        /// itself (sp_Outbox_MarkFailed: retry after 10 s, 20 s ... up to 5 minutes, never gives up) and does not hold back
+        /// the others; only an unreachable web service stops the run.
+        /// </summary>
+        private void SendResults(SQLManager sql, CmcWebClient web, CancellationToken ct)
+        {
+            DataTable due = sql.ExecuteStoredProcedure("dbo.sp_Outbox_GetNext", new Dictionary<string, object> { { "@Max", 20 } });
+            CmcWebException webFailure = null;
+
+            foreach (DataRow row in due.Rows)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                int id = 0;
+                string tracking = null;
+                try
+                {
+                    var result = new OutboxResult
+                    {
+                        PackJobId = Convert.ToInt32(row["PackJobID"]),
+                        TrackingNumber = row["TrackingNumber"].ToString(),
+                        MachineId = row["MachineId"] == DBNull.Value ? _machineId : row["MachineId"].ToString(),
+                        BoxWeightG = IntOrZero(row["BoxWeightG"]),
+                        LengthMm = IntOrZero(row["LengthMm"]),
+                        WidthMm = IntOrZero(row["WidthMm"]),
+                        HeightMm = IntOrZero(row["HeightMm"]),
+                        CompletedAtLocal = row["CompletedAt"] == DBNull.Value ? DateTime.Now : Convert.ToDateTime(row["CompletedAt"])
+                    };
+                    id = result.PackJobId;
+                    tracking = result.TrackingNumber;
+
+                    web.PostResultAsync(result, ct).GetAwaiter().GetResult();
+
+                    sql.ExecuteStoredProcedure("dbo.sp_Outbox_MarkSent", new Dictionary<string, object> { { "@PackJobID", id } });
+                    OnLog?.Invoke($"INFO: Result sent for {tracking}: {result.BoxWeightG} g, {result.LengthMm} x {result.WidthMm} x {result.HeightMm} mm.");
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (CmcWebException ex)
+                {
+                    TryMarkResultFailed(sql, id, ex.Message);
+                    webFailure = ex;
+                    if (ex.Unreachable) break;
+                }
+                catch (Exception ex)
+                {
+                    TryMarkResultFailed(sql, id, ex.Message);
+                    OnLog?.Invoke($"ERROR: Result for {tracking ?? "?"}: {ex.Message}");
+                }
+            }
+
+            if (webFailure != null) throw webFailure;
+        }
+
+        private static int IntOrZero(object value) => value == DBNull.Value ? 0 : Convert.ToInt32(value);
+
+        private static void TryMarkResultFailed(SQLManager sql, int packJobId, string message)
+        {
+            if (packJobId <= 0) return;
+            try
+            {
+                sql.ExecuteStoredProcedure("dbo.sp_Outbox_MarkFailed", new Dictionary<string, object>
+                    { { "@PackJobID", packJobId }, { "@Error", Truncate(message, 400) } });
+            }
+            catch
+            {
+                // The database is the problem; the next run tries again.
+            }
         }
 
         private static void TryMarkFailed(SQLManager sql, int requestId, string message)
