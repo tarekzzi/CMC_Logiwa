@@ -228,10 +228,11 @@ BEGIN
         INSERT dbo.PackJobEvent(PackJobID, OrderNumber, EventType, UserName, MachineId, Detail)
         VALUES (@id, @bc, N'NoLabel', @User, @MachineId, N'Scan without label');
 
-        -- one open request per tracking number (also not again within 2 minutes of the last one sent)
+        -- one open request per tracking number, and not again within 2 minutes of the last one asked for,
+        -- whatever happened to it (Sent, or Done because Logiwa does not know the number)
         IF NOT EXISTS (SELECT 1 FROM dbo.LabelRequest
                        WHERE OrderNumber = @bc
-                         AND (Status = N'Pending' OR (Status = N'Sent' AND SentAt > DATEADD(MINUTE, -2, SYSDATETIME()))))
+                         AND (Status = N'Pending' OR RequestedAt > DATEADD(MINUTE, -2, SYSDATETIME())))
             INSERT dbo.LabelRequest(OrderNumber, MachineId) VALUES (@bc, @MachineId);
 
         SELECT N'NO_LABEL' AS EnqResult, CAST(NULL AS int) AS PackJobID, CAST(NULL AS nvarchar(100)) AS MatchLab,

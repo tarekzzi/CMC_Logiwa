@@ -29,7 +29,13 @@ namespace CMC_Logiwa.Services
     /// <summary>Thrown for any non-success answer or network failure. The message never contains the API key or label data.</summary>
     public sealed class CmcWebException : Exception
     {
-        public CmcWebException(string message, Exception inner = null) : base(message, inner) { }
+        /// <summary>True when the web service could not be reached at all (network error or timeout), as opposed to answering with an error for this one call.</summary>
+        public bool Unreachable { get; }
+
+        public CmcWebException(string message, Exception inner = null, bool unreachable = false) : base(message, inner)
+        {
+            Unreachable = unreachable;
+        }
     }
 
     /// <summary>
@@ -101,7 +107,7 @@ namespace CMC_Logiwa.Services
             }
             catch (CmcWebException) { throw; }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-            catch (Exception ex) { throw new CmcWebException("Cannot reach the web service: " + ex.Message, ex); }
+            catch (Exception ex) { throw new CmcWebException("Cannot reach the web service: " + ex.Message, ex, unreachable: true); }
         }
 
         /// <summary>Checks the address and the key without downloading any label: asks for orders after a sequence number that cannot exist.</summary>

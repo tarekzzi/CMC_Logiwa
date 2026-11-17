@@ -159,39 +159,75 @@ namespace CMC_Logiwa.Services
         {
             DataTable due = sql.ExecuteStoredProcedure("dbo.sp_LabelReq_GetNext", new Dictionary<string, object> { { "@Max", 20 } });
 
+            // The requests are sent oldest first. One request that keeps failing must not hold back the ones behind it:
+            // every failure is recorded on that request (sp_LabelReq_MarkFailed pushes its next attempt out, up to 5 minutes)
+            // and the loop goes on. Only a web service that cannot be reached at all stops the loop, because the
+            // remaining requests would fail the same way (each waiting for the 30 second timeout).
+            CmcWebException webFailure = null;
+
             foreach (DataRow row in due.Rows)
             {
                 ct.ThrowIfCancellationRequested();
-                int id = Convert.ToInt32(row["RequestId"]);
-                string tracking = row["TrackingNumber"].ToString();
-                string machine = row["MachineId"] == DBNull.Value ? _machineId : row["MachineId"].ToString();
-                DateTime requestedAt = Convert.ToDateTime(row["RequestedAt"]);
 
-                LabelRequestResult outcome;
+                int id = 0;
+                string tracking = null;
                 try
                 {
-                    outcome = web.RequestLabelAsync(tracking, machine, requestedAt, ct).GetAwaiter().GetResult();
+                    id = Convert.ToInt32(row["RequestId"]);
+                    tracking = row["TrackingNumber"].ToString();
+                    string machine = row["MachineId"] == DBNull.Value ? _machineId : row["MachineId"].ToString();
+                    DateTime requestedAt = Convert.ToDateTime(row["RequestedAt"]);
+
+                    LabelRequestResult outcome = web.RequestLabelAsync(tracking, machine, requestedAt, ct).GetAwaiter().GetResult();
+
+                    if (outcome == LabelRequestResult.Accepted)
+                    {
+                        sql.ExecuteStoredProcedure("dbo.sp_LabelReq_MarkSent", new Dictionary<string, object> { { "@RequestId", id } });
+                        OnLog?.Invoke($"INFO: Label requested for {tracking}.");
+                    }
+                    else
+                    {
+                        // Logiwa has no order for this tracking number (or it cannot be pinned down): close the request.
+                        // Scanning it again after a couple of minutes asks again.
+                        sql.ExecuteStoredProcedure("dbo.sp_LabelReq_MarkDone", new Dictionary<string, object>
+                            { { "@RequestId", id }, { "@Note", "Logiwa does not know this tracking number." } });
+                        OnLog?.Invoke($"INFO: Logiwa has no order for {tracking}.");
+                    }
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch (CmcWebException ex)
                 {
-                    sql.ExecuteStoredProcedure("dbo.sp_LabelReq_MarkFailed", new Dictionary<string, object>
-                        { { "@RequestId", id }, { "@Error", Truncate(ex.Message, 400) } });
-                    throw;   // the web service is not answering properly: stop here, retry next run
+                    TryMarkFailed(sql, id, ex.Message);
+                    webFailure = ex;
+                    if (ex.Unreachable) break;   // the others would only time out as well: try again next run
                 }
+                catch (Exception ex)
+                {
+                    // A local problem with this one request (for example a database error while closing it).
+                    // The request stays queued and is tried again later; the others are not held back.
+                    TryMarkFailed(sql, id, ex.Message);
+                    OnLog?.Invoke($"ERROR: Label request for {tracking ?? "?"}: {ex.Message}");
+                }
+            }
 
-                if (outcome == LabelRequestResult.Accepted)
-                {
-                    sql.ExecuteStoredProcedure("dbo.sp_LabelReq_MarkSent", new Dictionary<string, object> { { "@RequestId", id } });
-                    OnLog?.Invoke($"INFO: Label requested for {tracking}.");
-                }
-                else
-                {
-                    // Logiwa has no order for this tracking number (or it cannot be pinned down): close the request.
-                    // Scanning it again after a couple of minutes asks again.
-                    sql.ExecuteStoredProcedure("dbo.sp_LabelReq_MarkDone", new Dictionary<string, object>
-                        { { "@RequestId", id }, { "@Note", "Logiwa does not know this tracking number." } });
-                    OnLog?.Invoke($"INFO: Logiwa has no order for {tracking}.");
-                }
+            // Still report a web problem in the status line, but only after every request had its turn.
+            if (webFailure != null) throw webFailure;
+        }
+
+        private static void TryMarkFailed(SQLManager sql, int requestId, string message)
+        {
+            if (requestId <= 0) return;
+            try
+            {
+                sql.ExecuteStoredProcedure("dbo.sp_LabelReq_MarkFailed", new Dictionary<string, object>
+                    { { "@RequestId", requestId }, { "@Error", Truncate(message, 400) } });
+            }
+            catch
+            {
+                // The database is the problem; the next run tries again. Nothing more to do for this request.
             }
         }
 
