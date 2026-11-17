@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **Work in progress.** CMC_Logiwa is the successor of CMC_VER1 (same machine protocol; no wave import, no 3PLWMS; orders come from the web VM instead). Sections below that mention the wave import, 3PLWMS login/API or the `CMC` database still describe V1 and are being rewritten as the new version is built. Done so far: local login (`LocalAuthService`), per-PC Database settings (`DbSettings`, DPAPI file under ProgramData), SQL scripts in `db/` (run order 001, 000, 002). Design: `CMC_VER1DOCCMC_Logiwa-design-v1.md`. Database: `Local_CMC_Logiwa_DEV` / `_PRO`, SQL logins `CMC_Logiwa_app_dev` / `_pro`.
+> **Work in progress.** CMC_Logiwa is the successor of CMC_VER1 (same machine protocol; no wave import, no 3PLWMS; orders come from the web VM instead). Sections below that mention the wave import, 3PLWMS login/API or the `CMC` database still describe V1 and are being rewritten as the new version is built. Done so far: local login (`LocalAuthService`), per-PC Database settings (`DbSettings`, DPAPI file under ProgramData), SQL scripts in `db/` (run order 001, 000, 002, 003, 004; 004 = procedures for the Settings / Overview / Errors screens). Design: `CMC_VER1DOCCMC_Logiwa-design-v1.md`. Database: `Local_CMC_Logiwa_DEV` / `_PRO`, SQL logins `CMC_Logiwa_app_dev` / `_pro`.
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 

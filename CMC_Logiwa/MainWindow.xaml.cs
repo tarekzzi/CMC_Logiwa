@@ -139,7 +139,6 @@ namespace CMC_Logiwa
             pillText.Text = connected ? "Connected" : "Not connected";
 
             btnStartConnection.IsEnabled = !connected;
-            btnSettings.IsEnabled = !connected;
             btnEndConnection.IsEnabled = connected;
             txtIPAddress.IsEnabled = !connected;
             txtPort.IsEnabled = !connected;
@@ -329,17 +328,23 @@ namespace CMC_Logiwa
 
         // ===== Exit =====
 
-        /// <summary>Database and web service settings. Locked while connected to the machine: the open connection uses the old database.</summary>
-        private void btnSettings_Click(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// Settings: users, and the database / web service. The users part works while the machine is connected;
+        /// changing the database does not (the open connection uses the old one), the window says so.
+        /// </summary>
+        private async void btnSettings_Click(object sender, RoutedEventArgs e)
         {
-            var dlg = new DbSettingsWindow(firstRun: false) { Owner = this };
-            if (dlg.ShowDialog() != true)
+            var dlg = new SettingsWindow(machineConnected: _networkManager != null && _networkManager.IsConnected) { Owner = this };
+            dlg.ShowDialog();
+
+            if (!dlg.ConnectionSettingsChanged)
                 return;
 
             var settings = DbSettingsStore.Load();
             lblSession.Text = settings == null ? SessionVariables.UserName : $"{settings.EnvironmentName}   ·   {SessionVariables.UserName}";
             AppendLog("INFO: Settings saved.");
             OrderSyncService.RequestPoll();   // the sync reads the settings on every run, so the new address and key apply now
+            await overview.RefreshAsync();     // the database may be a different one now
         }
 
         private void btnExit_Click(object sender, RoutedEventArgs e) => Close();

@@ -1,6 +1,7 @@
 <Window x:Class="CMC_Logiwa.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CMC_Logiwa"
         Title="CMC Logiwa"
         Width="1280" Height="880" MinWidth="1000" MinHeight="640"
         WindowStartupLocation="CenterScreen"
@@ -100,8 +101,14 @@
             </Grid>
         </Border>
 
-        <!-- ===== Body ===== -->
-        <Grid Grid.Row="1" Margin="20">
+        <!-- ===== Body: Overview | Machine | Errors ===== -->
+        <TabControl Grid.Row="1" x:Name="tabs" Margin="24,14,24,20">
+          <TabItem Header="Overview">
+            <local:OverviewView x:Name="overview" />
+          </TabItem>
+
+          <TabItem Header="Machine">
+        <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="360" />
                 <ColumnDefinition Width="20" />
@@ -116,7 +123,7 @@
                             <TextBlock Text="Machine connection" Style="{StaticResource CardTitle}" />
 
                             <Label Content="_IP address" Target="{Binding ElementName=txtIPAddress}" />
-                            <TextBox x:Name="txtIPAddress" Text="127.0.0.1" Margin="0,0,0,12" />
+                            <TextBox x:Name="txtIPAddress" Text="10.2.1.201" Margin="0,0,0,12" />
 
                             <Grid Margin="0,0,0,16">
                                 <Grid.ColumnDefinitions>
@@ -236,5 +243,11 @@
                 </Grid>
             </Border>
         </Grid>
+          </TabItem>
+
+          <TabItem Header="Errors">
+            <local:ErrorsView x:Name="errors" />
+          </TabItem>
+        </TabControl>
     </Grid>
 </Window>

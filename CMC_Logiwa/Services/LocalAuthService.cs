@@ -5,6 +5,19 @@ using System.Security.Cryptography;
 
 namespace CMC_Logiwa.Services
 {
+    /// <summary>One row of the Users list on the Settings screen.</summary>
+    public sealed class UserInfo
+    {
+        public string Username { get; set; }
+        public bool IsActive { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime? LastLoginAt { get; set; }
+
+        public string StatusText => IsActive ? "Active" : "Switched off";
+        public string CreatedText => CreatedAt.ToString("yyyy-MM-dd");
+        public string LastLoginText => LastLoginAt.HasValue ? LastLoginAt.Value.ToString("yyyy-MM-dd HH:mm") : "never";
+    }
+
     /// <summary>
     /// Local username/password login against the Users table of the local database.
     /// Passwords are never stored: PBKDF2 (SHA-256) hash + random salt, computed here.
@@ -65,6 +78,83 @@ namespace CMC_Logiwa.Services
                 return true;
 
             error = result == "EXISTS" ? "That username already exists." : "The user could not be created.";
+            return false;
+        }
+
+        /// <summary>All users, for the Settings screen. Hashes are not read.</summary>
+        public List<UserInfo> ListUsers()
+        {
+            DataTable dt = _sql.ExecuteStoredProcedure("dbo.sp_User_List", null);
+            var list = new List<UserInfo>();
+            foreach (DataRow row in dt.Rows)
+            {
+                list.Add(new UserInfo
+                {
+                    Username = row["Username"].ToString(),
+                    IsActive = Convert.ToBoolean(row["IsActive"]),
+                    CreatedAt = Convert.ToDateTime(row["CreatedAt"]),
+                    LastLoginAt = row["LastLoginAt"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(row["LastLoginAt"])
+                });
+            }
+            return list;
+        }
+
+        /// <summary>Sets a new password for an existing user (a new random salt every time).</summary>
+        public bool SetPassword(string username, string password, out string error)
+        {
+            error = null;
+            username = (username ?? "").Trim();
+
+            if (username.Length == 0)
+            {
+                error = "Select a user first.";
+                return false;
+            }
+            if (string.IsNullOrEmpty(password) || password.Length < MinPasswordLength)
+            {
+                error = $"The password must be at least {MinPasswordLength} characters.";
+                return false;
+            }
+
+            byte[] salt = new byte[SaltSize];
+            using (var rng = RandomNumberGenerator.Create())
+                rng.GetBytes(salt);
+
+            DataTable dt = _sql.ExecuteStoredProcedure("dbo.sp_User_SetPassword", new Dictionary<string, object>
+            {
+                { "@Username", username },
+                { "@PasswordHash", ComputeHash(password, salt, DefaultIterations) },
+                { "@Salt", salt },
+                { "@Iterations", DefaultIterations }
+            });
+
+            if (dt.Rows.Count > 0 && Convert.ToInt32(dt.Rows[0]["Updated"]) > 0)
+                return true;
+
+            error = "That user was not found.";
+            return false;
+        }
+
+        /// <summary>
+        /// Switches a user on or off (a switched-off user cannot log in; nothing is deleted).
+        /// The last active user cannot be switched off.
+        /// </summary>
+        public bool SetActive(string username, bool active, out string error)
+        {
+            error = null;
+            DataTable dt = _sql.ExecuteStoredProcedure("dbo.sp_User_SetActive", new Dictionary<string, object>
+            {
+                { "@Username", (username ?? "").Trim() },
+                { "@IsActive", active }
+            });
+
+            string result = dt.Rows.Count > 0 ? dt.Rows[0]["Result"]?.ToString() : null;
+            if (result == "OK")
+                return true;
+
+            error = result == "LAST_ACTIVE" ? "This is the only active user: switching it off would leave nobody able to log in."
+                  : result == "NOT_FOUND" ? "That user was not found."
+                  : "The change could not be saved.";
             return false;
         }
 

@@ -1,0 +1,129 @@
+<Window x:Class="CMC_Logiwa.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="CMC Logiwa – Settings"
+        Width="860" Height="700" MinWidth="760" MinHeight="600"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource AppBgBrush}"
+        Foreground="{StaticResource TextBrush}" FontFamily="{StaticResource UiFont}" FontSize="14"
+        UseLayoutRounding="True" SnapsToDevicePixels="True">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Settings" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,12" />
+
+        <TabControl Grid.Row="1">
+            <!-- ===== Users ===== -->
+            <TabItem Header="Users">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" MinHeight="140" />
+                        <RowDefinition Height="14" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Style="{StaticResource Card}" Padding="0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <StackPanel Margin="20,14,20,12">
+                                <TextBlock Text="People who can log in on this PC" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock x:Name="lblUsersInfo" Style="{StaticResource MutedText}" FontSize="12.5" Margin="0,2,0,0" />
+                            </StackPanel>
+                            <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,1,0,0">
+                                <DataGrid x:Name="gridUsers" SelectionChanged="gridUsers_SelectionChanged">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="User name" Binding="{Binding Username}" Width="*" MinWidth="180" />
+                                        <DataGridTextColumn Header="Status" Binding="{Binding StatusText}" Width="130" />
+                                        <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="120" />
+                                        <DataGridTextColumn Header="Last login" Binding="{Binding LastLoginText}" Width="160" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Add a user" Style="{StaticResource CardTitle}" />
+                                <Label Content="User name" Target="{Binding ElementName=txtNewUser}" />
+                                <TextBox x:Name="txtNewUser" Margin="0,0,0,10" />
+                                <Label Content="Password" Target="{Binding ElementName=txtNewPassword}" />
+                                <PasswordBox x:Name="txtNewPassword" Margin="0,0,0,10" />
+                                <Label Content="Password again" Target="{Binding ElementName=txtNewPassword2}" />
+                                <PasswordBox x:Name="txtNewPassword2" Margin="0,0,0,14" />
+                                <Button x:Name="btnAddUser" Content="Add user" Style="{StaticResource PrimaryButton}" MinHeight="40" Click="btnAddUser_Click" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="2" Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock x:Name="lblSelected" Text="Selected user" Style="{StaticResource CardTitle}" />
+                                <Label Content="New password" Target="{Binding ElementName=txtResetPassword}" />
+                                <PasswordBox x:Name="txtResetPassword" Margin="0,0,0,10" />
+                                <Label Content="Password again" Target="{Binding ElementName=txtResetPassword2}" />
+                                <PasswordBox x:Name="txtResetPassword2" Margin="0,0,0,14" />
+                                <Button x:Name="btnSetPassword" Content="Set password" Style="{StaticResource PrimaryButton}" MinHeight="40" Click="btnSetPassword_Click" />
+                                <Button x:Name="btnToggleActive" Content="Switch off" MinHeight="40" Margin="0,8,0,0" Click="btnToggleActive_Click" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <!-- ===== Connection ===== -->
+            <TabItem Header="Database and web service">
+                <Border Style="{StaticResource Card}" VerticalAlignment="Top">
+                    <StackPanel>
+                        <TextBlock Text="This PC" Style="{StaticResource CardTitle}" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="170" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Environment" Style="{StaticResource MutedText}" Margin="0,0,0,8" />
+                            <TextBlock x:Name="valEnvironment" Grid.Column="1" Margin="0,0,0,8" />
+                            <TextBlock Grid.Row="1" Text="Database server" Style="{StaticResource MutedText}" Margin="0,0,0,8" />
+                            <TextBlock x:Name="valServer" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8" />
+                            <TextBlock Grid.Row="2" Text="Database" Style="{StaticResource MutedText}" Margin="0,0,0,8" />
+                            <TextBlock x:Name="valDatabase" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8" />
+                            <TextBlock Grid.Row="3" Text="Web service address" Style="{StaticResource MutedText}" Margin="0,0,0,8" />
+                            <TextBlock x:Name="valWeb" Grid.Row="3" Grid.Column="1" Margin="0,0,0,8" TextWrapping="Wrap" />
+                            <TextBlock Grid.Row="4" Text="API key" Style="{StaticResource MutedText}" />
+                            <TextBlock x:Name="valKey" Grid.Row="4" Grid.Column="1" />
+                        </Grid>
+
+                        <Button x:Name="btnChangeDb" Content="Change database and web service settings…" HorizontalAlignment="Left"
+                                MinHeight="40" Padding="18,0" Margin="0,20,0,0" Click="btnChangeDb_Click" />
+                        <TextBlock x:Name="lblChangeHint" Style="{StaticResource MutedText}" FontSize="12.5" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    </StackPanel>
+                </Border>
+            </TabItem>
+        </TabControl>
+
+        <Grid Grid.Row="2" Margin="0,14,0,0">
+            <TextBlock x:Name="lblStatus" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,140,0" />
+            <Button Content="Close" MinWidth="110" MinHeight="40" HorizontalAlignment="Right" IsCancel="True" IsDefault="True" Click="btnClose_Click" />
+        </Grid>
+    </Grid>
+</Window>
