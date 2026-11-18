@@ -123,7 +123,7 @@
                             <TextBlock Text="Machine connection" Style="{StaticResource CardTitle}" />
 
                             <Label Content="_IP address" Target="{Binding ElementName=txtIPAddress}" />
-                            <TextBox x:Name="txtIPAddress" Text="10.2.1.201" Margin="0,0,0,12" />
+                            <TextBox x:Name="txtIPAddress" IsReadOnly="True" Text="10.2.1.201" Margin="0,0,0,12" />
 
                             <Grid Margin="0,0,0,16">
                                 <Grid.ColumnDefinitions>
@@ -133,11 +133,11 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0">
                                     <Label Content="_Port" Target="{Binding ElementName=txtPort}" />
-                                    <TextBox x:Name="txtPort" Text="9200" />
+                                    <TextBox x:Name="txtPort" IsReadOnly="True" Text="9200" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="2">
                                     <Label Content="_Machine ID" Target="{Binding ElementName=txtMachineId}" />
-                                    <TextBox x:Name="txtMachineId" Text="002" />
+                                    <TextBox x:Name="txtMachineId" IsReadOnly="True" Text="002" />
                                 </StackPanel>
                             </Grid>
 
@@ -152,8 +152,9 @@
                                 <Button x:Name="btnEndConnection" Grid.Column="2" Content="_Disconnect"
                                         Style="{StaticResource SecondaryButton}" Click="btnEndConnection_Click" />
                             </Grid>
-                            <CheckBox x:Name="chkAutoReconnect" Content="Reconnect automatically if the link drops"
-                                      IsChecked="True" Margin="0,12,0,0" />
+                            <TextBlock x:Name="lblMachineSource" Style="{StaticResource MutedText}" FontSize="12.5"
+                                       TextWrapping="Wrap" Margin="0,12,0,0"
+                                       Text="Machine ID, address, port and automatic reconnect are set in Settings > Machine." />
                             <TextBlock x:Name="lblLink" Style="{StaticResource MutedText}" FontSize="12.5"
                                        TextWrapping="Wrap" Margin="0,6,0,0" />
 

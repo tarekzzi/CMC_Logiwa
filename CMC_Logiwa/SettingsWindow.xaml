@@ -84,6 +84,32 @@
                 </Grid>
             </TabItem>
 
+            <!-- ===== Machine ===== -->
+            <TabItem Header="Machine">
+                <Border Style="{StaticResource Card}" VerticalAlignment="Top">
+                    <StackPanel MaxWidth="520" HorizontalAlignment="Left">
+                        <TextBlock Text="CMC machine on this PC" Style="{StaticResource CardTitle}" />
+                        <TextBlock Text="Saved in this PC's database. The Machine tab uses these values; every change is logged."
+                                   Style="{StaticResource MutedText}" FontSize="12.5" TextWrapping="Wrap" Margin="0,0,0,14" />
+
+                        <Label Content="Machine ID" Target="{Binding ElementName=txtMachineIdSetting}" />
+                        <TextBox x:Name="txtMachineIdSetting" MaxLength="20" Margin="0,0,0,12" />
+
+                        <Label Content="IP address of the machine" Target="{Binding ElementName=txtIpSetting}" />
+                        <TextBox x:Name="txtIpSetting" MaxLength="100" Margin="0,0,0,12" />
+
+                        <Label Content="Port" Target="{Binding ElementName=txtPortSetting}" />
+                        <TextBox x:Name="txtPortSetting" MaxLength="5" Width="120" HorizontalAlignment="Left" Margin="0,0,0,12" />
+
+                        <CheckBox x:Name="chkAutoSetting" Content="Reconnect automatically if the link drops" Margin="0,0,0,16" />
+
+                        <Button x:Name="btnSaveMachine" Content="Save machine settings" Style="{StaticResource PrimaryButton}"
+                                HorizontalAlignment="Left" MinHeight="40" Padding="18,0" Click="btnSaveMachine_Click" />
+                        <TextBlock x:Name="lblMachineHint" Style="{StaticResource MutedText}" FontSize="12.5" TextWrapping="Wrap" Margin="0,10,0,0" />
+                    </StackPanel>
+                </Border>
+            </TabItem>
+
             <!-- ===== Connection ===== -->
             <TabItem Header="Database and web service">
                 <Border Style="{StaticResource Card}" VerticalAlignment="Top">

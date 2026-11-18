@@ -83,6 +83,7 @@ namespace CMC_Logiwa
             _duplicatesTimer.Tick += async (s, e) => await RefreshDuplicatesAsync();
             Loaded += async (s, e) =>
             {
+                await LoadMachineSettingsAsync();   // before the sync starts: it uses the machine ID
                 StartWebSync();
                 await RefreshDuplicatesAsync();
                 _duplicatesTimer.Start();
@@ -211,6 +212,34 @@ namespace CMC_Logiwa
 
         private static readonly TimeSpan ReconnectEvery = TimeSpan.FromSeconds(3);
         private bool _wantConnected;
+        private bool _autoReconnect = true;   // from Settings > Machine
+
+        /// <summary>
+        /// Puts the saved machine settings (database) into the Machine tab. The ID, address and port are only replaced while
+        /// disconnected: an open connection keeps the values it was started with.
+        /// </summary>
+        private void ApplyMachineSettings(MachineSettings m, bool connected)
+        {
+            _autoReconnect = m.AutoReconnect;
+            if (connected) return;
+            txtMachineId.Text = m.MachineId;
+            txtIPAddress.Text = m.IpAddress;
+            txtPort.Text = m.Port.ToString();
+        }
+
+        private async Task LoadMachineSettingsAsync()
+        {
+            string error = null;
+            MachineSettings m = await Task.Run(() => MachineSettingsStore.TryLoad(out error));
+            if (m == null)
+            {
+                m = MachineSettings.Defaults;
+                AppendLog(error != null
+                    ? "ERROR: Cannot read the machine settings, using the defaults: " + error
+                    : "INFO: No machine settings saved yet, using the defaults (Settings > Machine).");
+            }
+            ApplyMachineSettings(m, connected: _networkManager != null && _networkManager.IsConnected);
+        }
         private System.Threading.CancellationTokenSource _reconnectCts;
         private DateTime _linkLostAt;
 
@@ -221,7 +250,7 @@ namespace CMC_Logiwa
             lblLink.Text = $"Link lost at {_linkLostAt:HH:mm:ss}: {reason}.";
             lblLink.Foreground = Res("DangerBrush");
 
-            if (_wantConnected && chkAutoReconnect.IsChecked == true)
+            if (_wantConnected && _autoReconnect)
                 StartReconnect();
             else
                 _wantConnected = false;
@@ -415,6 +444,14 @@ namespace CMC_Logiwa
         {
             var dlg = new SettingsWindow(machineConnected: _networkManager != null && _networkManager.IsConnected) { Owner = this };
             dlg.ShowDialog();
+
+            if (dlg.MachineSettingsChanged)
+            {
+                await LoadMachineSettingsAsync();
+                _sync?.Stop();      // the sync keeps the machine ID it was started with
+                StartWebSync();
+                AppendLog($"INFO: Machine settings saved: ID {txtMachineId.Text}, {txtIPAddress.Text}:{txtPort.Text}, automatic reconnect {(_autoReconnect ? "on" : "off")}.");
+            }
 
             if (!dlg.ConnectionSettingsChanged)
                 return;

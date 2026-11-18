@@ -21,13 +21,88 @@ namespace CMC_Logiwa
         /// <summary>True when the database or web service settings were saved: the caller restarts what depends on them.</summary>
         public bool ConnectionSettingsChanged { get; private set; }
 
+        /// <summary>True when the machine settings (ID, IP, port, auto reconnect) were saved: the caller reloads them.</summary>
+        public bool MachineSettingsChanged { get; private set; }
+
         public SettingsWindow(bool machineConnected)
         {
             InitializeComponent();
             _machineConnected = machineConnected;
 
             ShowConnection();
-            Loaded += async (s, e) => await LoadUsersAsync();
+            Loaded += async (s, e) =>
+            {
+                await LoadUsersAsync();
+                await LoadMachineAsync();
+            };
+        }
+
+        // ===== Machine =====
+
+        private async Task LoadMachineAsync()
+        {
+            string error = null;
+            MachineSettings m = await Task.Run(() => MachineSettingsStore.TryLoad(out error));
+
+            if (m == null)
+            {
+                m = MachineSettings.Defaults;
+                lblMachineHint.Text = error != null
+                    ? "Cannot read the machine settings (has db\\006_machine_settings_dev.sql been run?): " + error
+                    : "No machine settings are saved yet. These are the defaults; Save stores them.";
+                lblMachineHint.Foreground = (Brush)FindResource(error != null ? "DangerBrush" : "MutedBrush");
+            }
+            else
+            {
+                lblMachineHint.Text = m.UpdatedAt.HasValue ? $"Last saved {m.UpdatedAt:yyyy-MM-dd HH:mm}" + (string.IsNullOrEmpty(m.UpdatedBy) ? "" : " by " + m.UpdatedBy) + "." : "";
+                lblMachineHint.Foreground = (Brush)FindResource("MutedBrush");
+            }
+
+            txtMachineIdSetting.Text = m.MachineId;
+            txtIpSetting.Text = m.IpAddress;
+            txtPortSetting.Text = m.Port.ToString();
+            chkAutoSetting.IsChecked = m.AutoReconnect;
+
+            // The open connection uses the current values: change them only while disconnected.
+            txtMachineIdSetting.IsEnabled = txtIpSetting.IsEnabled = txtPortSetting.IsEnabled = !_machineConnected;
+            chkAutoSetting.IsEnabled = true;   // the checkbox is read when the link drops, so it can change at any time
+            btnSaveMachine.IsEnabled = true;
+            if (_machineConnected)
+                lblMachineHint.Text = "The machine is connected: disconnect first to change the machine ID, address or port. "
+                                      + "The automatic reconnect option can be changed now. " + lblMachineHint.Text;
+        }
+
+        private async void btnSaveMachine_Click(object sender, RoutedEventArgs e)
+        {
+            if (!int.TryParse(txtPortSetting.Text.Trim(), out int port))
+            {
+                ShowStatus("The port must be a number from 1 to 65535.", error: true);
+                txtPortSetting.Focus();
+                return;
+            }
+
+            var m = new MachineSettings
+            {
+                MachineId = txtMachineIdSetting.Text.Trim(),
+                IpAddress = txtIpSetting.Text.Trim(),
+                Port = port,
+                AutoReconnect = chkAutoSetting.IsChecked == true
+            };
+
+            string user = SessionVariables.UserName;
+            btnSaveMachine.IsEnabled = false;
+            string error = await Task.Run(() => MachineSettingsStore.Save(m, user));
+            btnSaveMachine.IsEnabled = true;
+
+            if (error != null)
+            {
+                ShowStatus(error, error: true);
+                return;
+            }
+
+            MachineSettingsChanged = true;
+            ShowStatus("Machine settings saved.", error: false);
+            await LoadMachineAsync();
         }
 
         // ===== Users =====

@@ -27,7 +27,7 @@
     <UpdateRequired>false</UpdateRequired>
     <MapFileExtensions>true</MapFileExtensions>
     <ProductName>CMC Logiwa</ProductName>
-    <ApplicationRevision>4</ApplicationRevision>
+    <ApplicationRevision>5</ApplicationRevision>
     <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
     <UseApplicationTrust>false</UseApplicationTrust>
     <PublishWizardCompleted>true</PublishWizardCompleted>
@@ -132,6 +132,7 @@
     <Compile Include="Services\LocalAuthService.cs" />
     <Compile Include="Services\ScreenData.cs" />
     <Compile Include="BarLineChart.cs" />
+    <Compile Include="Services\MachineSettings.cs" />
     <Compile Include="OverviewView.xaml.cs">
       <DependentUpon>OverviewView.xaml</DependentUpon>
     </Compile>

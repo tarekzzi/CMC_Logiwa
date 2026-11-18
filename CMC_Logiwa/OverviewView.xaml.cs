@@ -185,10 +185,12 @@ namespace CMC_Logiwa
 
                 var summary = await summaryTask;
                 var series = await seriesTask;
-                var stops = await stopsTask;
                 FillClients(await clientsTask);
-
                 ShowSummary(summary, title, from, to, now);
+
+                // Stops and operators come last: if their procedures are missing (script 005 not run in full),
+                // the rest of the dashboard is already filled and the error is shown at the bottom.
+                var stops = await stopsTask;
                 ShowCharts(series, hourly, title, stops, stopMin);
                 ShowOperators(await operatorsTask);
 
