@@ -52,7 +52,7 @@ Create it like the DEV vault; the web VM's managed identity needs read access to
   - `KeyVault__Uri` = the PRO vault URI
   - `Webhook__PublicBaseUrl` = `https://logiwacmc.fulfilmentaustralia.com.au`
   - `Logiwa__BaseUrl` = `https://myapi.logiwa.com/v3.1/` (DEV sets the sandbox URL; PRO must not)
-  - `Webhook__AllowedIps__0` = `18.116.226.248`, `Webhook__AllowedIps__1` = `3.151.75.183` (Logiwa v1 webhook IPs; leave out only if a first test shows other addresses)
+  - `Webhook__AllowedIps__0` = `18.116.226.248`, `Webhook__AllowedIps__1` = `3.151.75.183` (Logiwa v1 webhook IPs; decided: keep both. If the first real webhook is refused with 403, the web VM log shows the caller IP: correct the list then)
   - `OrderStatus__ClosedStatuses__0..n` = the exact Logiwa status names from step 0 (the default list is Shipped, Delivered, Cancelled, Canceled, Deleted)
 - [ ] Deploy: copy `cmc-logiwa.zip` and `Install.ps1` to the VM, then (elevated PowerShell)
       `.\Install.ps1 -Url https://logiwacmc.fulfilmentaustralia.com.au/webhooks/logiwa -Target C:\inetpub\LogiwaCMC\PRO`
