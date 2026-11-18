@@ -69,6 +69,7 @@ namespace CMC_Logiwa
 
             var settings = DbSettingsStore.Load();
             lblSession.Text = settings == null ? userName : $"{settings.EnvironmentName}   ·   {userName}";
+            ShowEnvironmentBanner(settings?.EnvironmentName);
 
             _logView = CollectionViewSource.GetDefaultView(_logLines);
             _logView.Filter = o => MatchesLogFilter((LogEntry)o);
@@ -150,6 +151,29 @@ namespace CMC_Logiwa
         }
 
         private Brush Res(string key) => (Brush)FindResource(key);
+
+        /// <summary>A strip above the header: red for PRO so nobody mistakes live orders for tests, a quiet blue for DEV.</summary>
+        private void ShowEnvironmentBanner(string environmentName)
+        {
+            if (string.Equals(environmentName, DbSettings.Pro, StringComparison.OrdinalIgnoreCase))
+            {
+                envBanner.Background = Res("DangerBrush");
+                envBannerText.Foreground = Brushes.White;
+                envBannerText.Text = "PRODUCTION  ·  live orders, real cartons";
+                envBanner.Visibility = Visibility.Visible;
+            }
+            else if (string.Equals(environmentName, DbSettings.Dev, StringComparison.OrdinalIgnoreCase))
+            {
+                envBanner.Background = Res("AccentSoftBrush");
+                envBannerText.Foreground = Res("AccentBrush");
+                envBannerText.Text = "DEV  ·  Logiwa sandbox, test data";
+                envBanner.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                envBanner.Visibility = Visibility.Collapsed;
+            }
+        }
 
         private void SetConnectionState(bool connected)
         {
@@ -492,6 +516,7 @@ namespace CMC_Logiwa
 
             var settings = DbSettingsStore.Load();
             lblSession.Text = settings == null ? SessionVariables.UserName : $"{settings.EnvironmentName}   ·   {SessionVariables.UserName}";
+            ShowEnvironmentBanner(settings?.EnvironmentName);
             AppendLog("INFO: Settings saved.");
             OrderSyncService.RequestPoll();   // the sync reads the settings on every run, so the new address and key apply now
             await overview.RefreshAsync();     // the database may be a different one now

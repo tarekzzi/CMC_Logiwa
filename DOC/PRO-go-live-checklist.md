@@ -18,10 +18,10 @@ only configuration differs. Tick the boxes in order. A step marked **(you decide
 
 ## 0. Decisions before you start (you decide)
 - [x] PRO hostname, `logiwacmc.fulfilmentaustralia.com.au` (decided; DNS record created, the wildcard certificate covers it).
-- [ ] Logiwa **production** API user (email + password) for the integration. Not the sandbox one.
-- [x] Warehouse: **chosen in the app** (Settings > Machine drop-down, read from Logiwa): nothing to look up or configure on the web VM. Only if one client's orders should be handled, its client GUID.
-- [ ] Which packing PC(s) will use PRO. Each PC gets its own API key.
-- [ ] Ask Logiwa the **exact status names** for shipped / delivered / cancelled / deleted orders (used by the shipped check).
+- [x] Logiwa **production** API user exists (credentials are in the PRO vault).
+- [x] Warehouse: **chosen in the app** (Settings > Machine drop-down, read from Logiwa): nothing to look up or configure on the web VM. Clients: **all clients** (decided), so no client GUID is configured.
+- [x] Packing PC: **one PC, the same one that runs DEV today** (one API key; see section 6 for switching between DEV and PRO on it).
+- [ ] Ask Logiwa the **exact status names** for shipped / delivered / cancelled / deleted orders (used by the shipped check). The user will provide them later; until then the default list applies.
 - [ ] A go-live window when the machine is idle (no date yet).
 
 ## 1. Release the code (dev PC)
@@ -38,12 +38,12 @@ only configuration differs. Tick the boxes in order. A step marked **(you decide
 
 ## 3. Key Vault `kv-logiwa-cmc-pro`
 Create it like the DEV vault; the web VM's managed identity needs read access to secrets.
-- [ ] `ConnectionStrings--Sql` = connection string to `Logiwa_CMC_PRO` with `Logiwa_CMC_app_pro`
-- [ ] `Webhook--Secret` = a NEW long random URL-safe secret (not the DEV one)
-- [ ] `Logiwa--Email` and `Logiwa--Password` = the Logiwa production user
-- [ ] `CmcApi--ApiKeyHashes--0` = hash of the PRO key. Create it on the dev PC: `powershell -ExecutionPolicy Bypass -File CMC_VER1\DOC\New-CmcApiKey.ps1 -Environment PRO`.
+- [x] `ConnectionStrings--Sql` = connection string to `Logiwa_CMC_PRO` with `Logiwa_CMC_app_pro`
+- [x] `Webhook--Secret` = a NEW long random URL-safe secret (not the DEV one)
+- [x] `Logiwa--Email` and `Logiwa--Password` = the Logiwa production user
+- [x] `CmcApi--ApiKeyHashes--0` = hash of the PRO key. Create it on the dev PC: `powershell -ExecutionPolicy Bypass -File CMC_VER1\DOC\New-CmcApiKey.ps1 -Environment PRO`.
       The KEY is shown once: store it in the password manager as "CMC API key PRO". Only the HASH goes to the vault. A second packing PC later = `CmcApi--ApiKeyHashes--1`.
-- [ ] Optional: `CmcApi--AllowedIps--0` = public IP of the packing PC (only if it is fixed; a wrong value locks the PC out).
+- [x] Skipped for now (decided): `CmcApi--AllowedIps--0` = public IP of the packing PC (only if it is fixed; a wrong value locks the PC out).
 
 ## 4. Web VM `10.100.11.10`: PRO site
 - [ ] Folder `C:\inetpub\LogiwaCMC\PRO` (with a `logs` folder), app pool `Logiwa_CMC_PRO` (No Managed Code, same idle/preload settings as DEV), site `Logiwa_CMC_PRO` bound to the PRO hostname on 443 with the certificate.
@@ -72,11 +72,11 @@ On the packing PC, as a SQL sysadmin, from the `CMC_Logiwa\db` folder (the same 
 
 ## 6. Packing PC: the app
 - [ ] Install/update the app from the tagged package (verify the SHA-256).
-- [ ] First start: Database settings = server `CMC_CONTROL\CMC_CONTROL`, database `Local_CMC_Logiwa_PRO`, login `CMC_Logiwa_app_pro`, environment name **PRO** (the window then shows PRO next to your name), web service address `https://logiwacmc.fulfilmentaustralia.com.au`, the **PRO** API key.
+- [ ] First start: Database settings = server `CMC_CONTROL\CMC_CONTROL`, database `Local_CMC_Logiwa_PRO`, login `CMC_Logiwa_app_pro`, environment name **PRO** (the window then shows PRO next to your name and a red PRODUCTION banner across the top), web service address `https://logiwacmc.fulfilmentaustralia.com.au`, the **PRO** API key.
 - [ ] Settings > Users: create the operators (PRO has its own user list).
 - [ ] Settings > Machine: machine ID, IP, port, **the warehouse (drop-down read from Logiwa through the web service; required: the app asks at start-up, will not connect the machine and downloads no orders until it is chosen)**, automatic reconnect on. Saved in the PRO database.
 - [ ] Message log shows "Web sync OK" and no 401/403.
-- [ ] DEV keeps its own settings; on a shared PC, switching between DEV and PRO = Settings > Database and web service, and the header shows which one you are on.
+- [ ] The same PC runs DEV and PRO, but the app has ONE database setting per PC: switching = Settings > Database and web service (not while the machine is connected). Users, machine ID/IP/port and the warehouse are stored per database, so enter them once in PRO too. Once PRO is live, leave this PC on PRO; use DEV only while the machine is idle or on another PC, never with DEV orders while real cartons are running.
 
 ## 7. Go-live
 - [ ] Machine idle. Register the production webhook (web VM, in the site folder):

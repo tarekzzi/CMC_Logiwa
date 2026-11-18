@@ -65,8 +65,15 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <StackPanel Grid.Row="0">
+
+        <!-- ===== Environment banner: red for PRO (real orders, real cartons), calm for DEV ===== -->
+        <Border x:Name="envBanner" Visibility="Collapsed" Padding="24,5">
+            <TextBlock x:Name="envBannerText" FontWeight="SemiBold" FontSize="13" HorizontalAlignment="Center" />
+        </Border>
+
         <!-- ===== Header ===== -->
-        <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}"
+        <Border Background="{StaticResource SurfaceBrush}"
                 BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,0,0,1" Padding="24,0">
             <Grid MinHeight="68">
                 <Grid.ColumnDefinitions>
@@ -100,6 +107,8 @@
                         Style="{StaticResource SecondaryButton}" Click="btnExit_Click" />
             </Grid>
         </Border>
+
+        </StackPanel>
 
         <!-- ===== Body: Overview | Machine | Errors ===== -->
         <TabControl Grid.Row="1" x:Name="tabs" Margin="24,14,24,20">
