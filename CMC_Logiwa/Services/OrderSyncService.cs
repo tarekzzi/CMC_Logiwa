@@ -13,6 +13,7 @@ namespace CMC_Logiwa.Services
         public DateTime? LastOk { get; set; }
         public string Error { get; set; }
         public int PendingLabelRequests { get; set; }
+        public bool NeedsWarehouse { get; set; }     // no warehouse chosen in Settings > Machine: orders are not downloaded
     }
 
     /// <summary>
@@ -102,19 +103,27 @@ namespace CMC_Logiwa.Services
             }
             _status.Configured = true;
 
+            // The warehouse this machine serves (Settings > Machine). Without it no orders are downloaded and no label requests
+            // are sent: every warehouse's orders would arrive. Finished boxes are still reported to Logiwa.
+            string loadError;
+            MachineSettings machine = MachineSettingsStore.TryLoad(out loadError);
+            string warehouse = machine != null && machine.HasWarehouse ? machine.WarehouseId : null;
+            _status.NeedsWarehouse = warehouse == null;
+
             var sql = new SQLManager();
 
             using (var web = new CmcWebClient(settings))
             {
-                // Three independent jobs against the same web service. A problem in one does not skip the others, except
+                // Independent jobs against the same web service. A problem in one does not skip the others, except
                 // when the web service cannot be reached at all: then the rest would only time out as well.
                 CmcWebException failure = null;
-                var steps = new Action[]
+                var steps = new List<Action>();
+                if (warehouse != null)
                 {
-                    () => SyncOrders(sql, web, ct),
-                    () => SendLabelRequests(sql, web, ct),
-                    () => SendResults(sql, web, ct)
-                };
+                    steps.Add(() => SyncOrders(sql, web, warehouse, ct));
+                    steps.Add(() => SendLabelRequests(sql, web, warehouse, ct));
+                }
+                steps.Add(() => SendResults(sql, web, ct));
 
                 foreach (var step in steps)
                 {
@@ -144,7 +153,7 @@ namespace CMC_Logiwa.Services
             OnStatus?.Invoke(_status);
         }
 
-        private void SyncOrders(SQLManager sql, CmcWebClient web, CancellationToken ct)
+        private void SyncOrders(SQLManager sql, CmcWebClient web, string warehouse, CancellationToken ct)
         {
             DataTable state = sql.ExecuteStoredProcedure("dbo.sp_Sync_GetState", null);
             long after = state.Rows.Count == 0 ? 0 : Convert.ToInt64(state.Rows[0]["LastSyncSeq"]);
@@ -152,7 +161,7 @@ namespace CMC_Logiwa.Services
             while (true)
             {
                 ct.ThrowIfCancellationRequested();
-                OrdersPage page = web.GetOrdersAsync(after, PageSize, ct).GetAwaiter().GetResult();
+                OrdersPage page = web.GetOrdersAsync(after, PageSize, warehouse, ct).GetAwaiter().GetResult();
 
                 // An empty page still goes through the procedure: it stamps LastPollAt and clears the last error.
                 DataTable result = sql.ExecuteStoredProcedure("dbo.sp_Sync_UpsertOrders", new Dictionary<string, object>
@@ -173,7 +182,7 @@ namespace CMC_Logiwa.Services
             }
         }
 
-        private void SendLabelRequests(SQLManager sql, CmcWebClient web, CancellationToken ct)
+        private void SendLabelRequests(SQLManager sql, CmcWebClient web, string warehouse, CancellationToken ct)
         {
             DataTable due = sql.ExecuteStoredProcedure("dbo.sp_LabelReq_GetNext", new Dictionary<string, object> { { "@Max", 20 } });
 
@@ -196,7 +205,7 @@ namespace CMC_Logiwa.Services
                     string machine = row["MachineId"] == DBNull.Value ? _machineId : row["MachineId"].ToString();
                     DateTime requestedAt = Convert.ToDateTime(row["RequestedAt"]);
 
-                    LabelRequestResult outcome = web.RequestLabelAsync(tracking, machine, requestedAt, ct).GetAwaiter().GetResult();
+                    LabelRequestResult outcome = web.RequestLabelAsync(tracking, machine, requestedAt, warehouse, ct).GetAwaiter().GetResult();
 
                     if (outcome == LabelRequestResult.Accepted)
                     {

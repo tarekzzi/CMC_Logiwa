@@ -17,12 +17,12 @@ only configuration differs. Tick the boxes in order. A step marked **(you decide
 ---
 
 ## 0. Decisions before you start (you decide)
-- [ ] PRO hostname, for example `logiwacmc.fulfilmentaustralia.com.au` (DNS record to the web VM, the wildcard certificate covers it).
+- [x] PRO hostname, `logiwacmc.fulfilmentaustralia.com.au` (decided; DNS record created, the wildcard certificate covers it).
 - [ ] Logiwa **production** API user (email + password) for the integration. Not the sandbox one.
-- [ ] The production **warehouse identifier** (GUID) and, only if one client's orders should be handled, its client GUID.
+- [x] Warehouse: **chosen in the app** (Settings > Machine drop-down, read from Logiwa): nothing to look up or configure on the web VM. Only if one client's orders should be handled, its client GUID.
 - [ ] Which packing PC(s) will use PRO. Each PC gets its own API key.
 - [ ] Ask Logiwa the **exact status names** for shipped / delivered / cancelled / deleted orders (used by the shipped check).
-- [ ] A go-live window when the machine is idle.
+- [ ] A go-live window when the machine is idle (no date yet).
 
 ## 1. Release the code (dev PC)
 - [ ] CMC_Logiwa: merge `ui-redesign` into `main`, then tag: `git tag v1.0 && git push origin main v1.0` (add `-c http.sslBackend=schannel` if the certificate error appears).
@@ -50,13 +50,12 @@ Create it like the DEV vault; the web VM's managed identity needs read access to
 - [ ] App pool environment variables (plain settings only, no secrets):
   - `ASPNETCORE_ENVIRONMENT` = `Production`
   - `KeyVault__Uri` = the PRO vault URI
-  - `Webhook__PublicBaseUrl` = `https://<PRO hostname>`
+  - `Webhook__PublicBaseUrl` = `https://logiwacmc.fulfilmentaustralia.com.au`
   - `Logiwa__BaseUrl` = `https://myapi.logiwa.com/v3.1/` (DEV sets the sandbox URL; PRO must not)
-  - `CmcApi__WarehouseIdentifier` = the production warehouse GUID
   - `Webhook__AllowedIps__0` = `18.116.226.248`, `Webhook__AllowedIps__1` = `3.151.75.183` (Logiwa v1 webhook IPs; leave out only if a first test shows other addresses)
   - `OrderStatus__ClosedStatuses__0..n` = the exact Logiwa status names from step 0 (the default list is Shipped, Delivered, Cancelled, Canceled, Deleted)
 - [ ] Deploy: copy `cmc-logiwa.zip` and `Install.ps1` to the VM, then (elevated PowerShell)
-      `.\Install.ps1 -Url https://<PRO hostname>/webhooks/logiwa -Target C:\inetpub\LogiwaCMC\PRO`
+      `.\Install.ps1 -Url https://logiwacmc.fulfilmentaustralia.com.au/webhooks/logiwa -Target C:\inetpub\LogiwaCMC\PRO`
       The last step must report **405** for the GET (the route is POST only).
 - [ ] Recycle the pool after any vault change: `%windir%\system32\inetsrv\appcmd recycle apppool /apppool.name:"Logiwa_CMC_PRO"`.
 - [ ] Check the log in `C:\inetpub\LogiwaCMC\PRO\logs` for start-up errors (missing secret, SQL login).
@@ -73,9 +72,9 @@ On the packing PC, as a SQL sysadmin, from the `CMC_Logiwa\db` folder (the same 
 
 ## 6. Packing PC: the app
 - [ ] Install/update the app from the tagged package (verify the SHA-256).
-- [ ] First start: Database settings = server `CMC_CONTROL\CMC_CONTROL`, database `Local_CMC_Logiwa_PRO`, login `CMC_Logiwa_app_pro`, environment name **PRO** (the window then shows PRO next to your name), web service address `https://<PRO hostname>`, the **PRO** API key.
+- [ ] First start: Database settings = server `CMC_CONTROL\CMC_CONTROL`, database `Local_CMC_Logiwa_PRO`, login `CMC_Logiwa_app_pro`, environment name **PRO** (the window then shows PRO next to your name), web service address `https://logiwacmc.fulfilmentaustralia.com.au`, the **PRO** API key.
 - [ ] Settings > Users: create the operators (PRO has its own user list).
-- [ ] Settings > Machine: machine ID, IP, port, automatic reconnect on. Saved in the PRO database.
+- [ ] Settings > Machine: machine ID, IP, port, **the warehouse (drop-down read from Logiwa through the web service; required: the app asks at start-up, will not connect the machine and downloads no orders until it is chosen)**, automatic reconnect on. Saved in the PRO database.
 - [ ] Message log shows "Web sync OK" and no 401/403.
 - [ ] DEV keeps its own settings; on a shared PC, switching between DEV and PRO = Settings > Database and web service, and the header shows which one you are on.
 

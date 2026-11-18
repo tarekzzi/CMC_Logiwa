@@ -88,9 +88,35 @@ namespace CMC_Logiwa.Services
             _http.DefaultRequestHeaders.Add("Accept", "application/json");
         }
 
-        public async Task<OrdersPage> GetOrdersAsync(long afterSeq, int limit, CancellationToken ct)
+        /// <summary>The warehouses Logiwa knows, for the drop-down in Settings > Machine.</summary>
+        public async Task<List<WarehouseInfo>> GetWarehousesAsync(CancellationToken ct)
         {
-            string body = await SendAsync(() => _http.GetAsync($"api/cmc/orders?afterSeq={afterSeq}&limit={limit}", ct), "orders", ct);
+            string body = await SendAsync(() => _http.GetAsync("api/cmc/warehouses", ct), "warehouses", ct);
+
+            try
+            {
+                var list = new List<WarehouseInfo>();
+                foreach (JObject o in (JArray)JObject.Parse(body)["warehouses"] ?? new JArray())
+                    list.Add(new WarehouseInfo
+                    {
+                        Identifier = o.Value<string>("identifier"),
+                        Code = o.Value<string>("code") ?? "",
+                        Description = o.Value<string>("description")
+                    });
+                return list.Where(w => !string.IsNullOrWhiteSpace(w.Identifier)).ToList();
+            }
+            catch (Exception ex) when (ex is JsonException || ex is InvalidCastException)
+            {
+                throw new CmcWebException("The web service answered, but not with a warehouse list.", ex);
+            }
+        }
+
+        /// <param name="warehouseId">Only this warehouse's orders are sent (the one this machine serves).</param>
+        public async Task<OrdersPage> GetOrdersAsync(long afterSeq, int limit, string warehouseId, CancellationToken ct)
+        {
+            string url = $"api/cmc/orders?afterSeq={afterSeq}&limit={limit}" +
+                         (string.IsNullOrWhiteSpace(warehouseId) ? "" : "&warehouseIdentifier=" + Uri.EscapeDataString(warehouseId));
+            string body = await SendAsync(() => _http.GetAsync(url, ct), "orders", ct);
 
             try
             {
@@ -110,13 +136,14 @@ namespace CMC_Logiwa.Services
             }
         }
 
-        public async Task<LabelRequestResult> RequestLabelAsync(string trackingNumber, string machineId, DateTime requestedAtLocal, CancellationToken ct)
+        public async Task<LabelRequestResult> RequestLabelAsync(string trackingNumber, string machineId, DateTime requestedAtLocal, string warehouseId, CancellationToken ct)
         {
             string json = JsonConvert.SerializeObject(new
             {
                 trackingNumber,
                 machineId,
-                requestedAt = new DateTimeOffset(requestedAtLocal)
+                requestedAt = new DateTimeOffset(requestedAtLocal),
+                warehouseIdentifier = string.IsNullOrWhiteSpace(warehouseId) ? null : warehouseId   // the web VM looks the tracking number up in this warehouse
             });
 
             try

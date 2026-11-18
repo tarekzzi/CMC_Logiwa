@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Windows;
@@ -24,18 +25,80 @@ namespace CMC_Logiwa
         /// <summary>True when the machine settings (ID, IP, port, auto reconnect) were saved: the caller reloads them.</summary>
         public bool MachineSettingsChanged { get; private set; }
 
-        public SettingsWindow(bool machineConnected)
+        /// <param name="startOnMachineTab">true = open on Settings > Machine (the app asks for the warehouse at start-up).</param>
+        public SettingsWindow(bool machineConnected, bool startOnMachineTab = false)
         {
             InitializeComponent();
             _machineConnected = machineConnected;
 
             ShowConnection();
+            if (startOnMachineTab) tabsSettings.SelectedItem = tabMachine;
+            Closing += SettingsWindow_Closing;
             Loaded += async (s, e) =>
             {
                 await LoadUsersAsync();
                 await LoadMachineAsync();
             };
         }
+
+        // ===== Warehouse (drop-down filled from Logiwa through the web service) =====
+
+        private MachineSettings _savedMachine;   // what the database holds now (for the saved warehouse and its code)
+
+        private async Task LoadWarehousesAsync()
+        {
+            string savedId = _savedMachine?.WarehouseId;
+            string savedCode = _savedMachine?.WarehouseCode;
+
+            var items = new List<WarehouseInfo>();
+            string problem = null;
+
+            DbSettings s = DbSettingsStore.Load();
+            if (s == null || !s.HasWebService)
+                problem = "Set the web service address and API key first (Database and web service tab): the warehouses come from Logiwa through it.";
+            else
+            {
+                btnReloadWarehouses.IsEnabled = false;
+                lblWarehouseHint.Text = "Loading the warehouses from Logiwa...";
+                lblWarehouseHint.Foreground = (Brush)FindResource("MutedBrush");
+                try
+                {
+                    using (var web = new CmcWebClient(s))
+                    using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(30)))
+                        items = await web.GetWarehousesAsync(cts.Token);
+                }
+                catch (Exception ex)
+                {
+                    problem = "Cannot load the warehouses: " + ex.Message;
+                }
+                btnReloadWarehouses.IsEnabled = true;
+            }
+
+            // Keep the saved warehouse selectable even when the list could not be loaded.
+            if (!string.IsNullOrWhiteSpace(savedId) && !items.Any(w => string.Equals(w.Identifier, savedId, StringComparison.OrdinalIgnoreCase)))
+                items.Insert(0, new WarehouseInfo { Identifier = savedId, Code = string.IsNullOrWhiteSpace(savedCode) ? savedId : savedCode });
+
+            cboWarehouse.ItemsSource = items;
+            cboWarehouse.SelectedItem = items.FirstOrDefault(w => string.Equals(w.Identifier, savedId, StringComparison.OrdinalIgnoreCase));
+            if (cboWarehouse.SelectedItem == null && items.Count == 1) cboWarehouse.SelectedIndex = 0;   // only one warehouse: nothing to choose
+
+            cboWarehouse.IsEnabled = !_machineConnected && items.Count > 0;
+
+            if (problem != null)
+            {
+                lblWarehouseHint.Text = problem;
+                lblWarehouseHint.Foreground = (Brush)FindResource("DangerBrush");
+            }
+            else
+            {
+                lblWarehouseHint.Text = items.Count == 0
+                    ? "Logiwa returned no warehouses."
+                    : (string.IsNullOrWhiteSpace(savedId) ? "Choose the warehouse this machine serves: only its orders are downloaded." : "Only this warehouse's orders are downloaded.");
+                lblWarehouseHint.Foreground = (Brush)FindResource(string.IsNullOrWhiteSpace(savedId) ? "DangerBrush" : "MutedBrush");
+            }
+        }
+
+        private async void btnReloadWarehouses_Click(object sender, RoutedEventArgs e) => await LoadWarehousesAsync();
 
         // ===== Machine =====
 
@@ -58,10 +121,12 @@ namespace CMC_Logiwa
                 lblMachineHint.Foreground = (Brush)FindResource("MutedBrush");
             }
 
+            _savedMachine = m;
             txtMachineIdSetting.Text = m.MachineId;
             txtIpSetting.Text = m.IpAddress;
             txtPortSetting.Text = m.Port.ToString();
             chkAutoSetting.IsChecked = m.AutoReconnect;
+            await LoadWarehousesAsync();
 
             // The open connection uses the current values: change them only while disconnected.
             txtMachineIdSetting.IsEnabled = txtIpSetting.IsEnabled = txtPortSetting.IsEnabled = !_machineConnected;
@@ -72,13 +137,24 @@ namespace CMC_Logiwa
                                       + "The automatic reconnect option can be changed now. " + lblMachineHint.Text;
         }
 
-        private async void btnSaveMachine_Click(object sender, RoutedEventArgs e)
+        private async void btnSaveMachine_Click(object sender, RoutedEventArgs e) => await SaveMachineAsync();
+
+        /// <summary>True when the machine settings were saved.</summary>
+        private async Task<bool> SaveMachineAsync()
         {
             if (!int.TryParse(txtPortSetting.Text.Trim(), out int port))
             {
                 ShowStatus("The port must be a number from 1 to 65535.", error: true);
                 txtPortSetting.Focus();
-                return;
+                return false;
+            }
+
+            var warehouse = cboWarehouse.SelectedItem as WarehouseInfo;
+            if (warehouse == null)
+            {
+                ShowStatus("Choose the warehouse this machine serves.", error: true);
+                cboWarehouse.Focus();
+                return false;
             }
 
             var m = new MachineSettings
@@ -86,7 +162,9 @@ namespace CMC_Logiwa
                 MachineId = txtMachineIdSetting.Text.Trim(),
                 IpAddress = txtIpSetting.Text.Trim(),
                 Port = port,
-                AutoReconnect = chkAutoSetting.IsChecked == true
+                AutoReconnect = chkAutoSetting.IsChecked == true,
+                WarehouseId = warehouse.Identifier,
+                WarehouseCode = warehouse.Code
             };
 
             string user = SessionVariables.UserName;
@@ -97,12 +175,56 @@ namespace CMC_Logiwa
             if (error != null)
             {
                 ShowStatus(error, error: true);
-                return;
+                return false;
             }
 
             MachineSettingsChanged = true;
             ShowStatus("Machine settings saved.", error: false);
             await LoadMachineAsync();
+            return true;
+        }
+
+        // ===== Unsaved changes =====
+
+        private bool _closeConfirmed;
+
+        /// <summary>True when the Machine tab shows something different from what is saved (a choice in the drop-down is not saved until the button is pressed).</summary>
+        private bool IsMachineDirty()
+        {
+            MachineSettings s = _savedMachine;
+            if (s == null || !cboWarehouse.IsLoaded) return false;
+
+            var warehouse = cboWarehouse.SelectedItem as WarehouseInfo;
+            bool warehouseChanged = warehouse != null && !string.Equals(warehouse.Identifier, s.WarehouseId, StringComparison.OrdinalIgnoreCase);
+
+            return warehouseChanged
+                   || txtMachineIdSetting.Text.Trim() != (s.MachineId ?? "")
+                   || txtIpSetting.Text.Trim() != (s.IpAddress ?? "")
+                   || txtPortSetting.Text.Trim() != s.Port.ToString()
+                   || (chkAutoSetting.IsChecked == true) != s.AutoReconnect;
+        }
+
+        private void MarkUnsaved(object sender, EventArgs e)
+        {
+            if (!IsMachineDirty()) return;
+            lblWarehouseHint.Text = "Not saved yet: press \"Save machine settings\".";
+            lblWarehouseHint.Foreground = (Brush)FindResource("DangerBrush");
+        }
+
+        private async void SettingsWindow_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            if (_closeConfirmed || !IsMachineDirty()) return;
+
+            e.Cancel = true;   // decided before the first await: the window stays open while we ask
+            var answer = MessageBox.Show(this,
+                "The machine settings were changed but not saved. Save them now?",
+                "Settings", MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Yes);
+
+            if (answer == MessageBoxResult.Cancel) return;
+            if (answer == MessageBoxResult.Yes && !await SaveMachineAsync()) return;
+
+            _closeConfirmed = true;
+            Close();
         }
 
         // ===== Users =====

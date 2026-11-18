@@ -16,7 +16,7 @@
 
         <TextBlock Grid.Row="0" Text="Settings" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,12" />
 
-        <TabControl Grid.Row="1">
+        <TabControl x:Name="tabsSettings" Grid.Row="1">
             <!-- ===== Users ===== -->
             <TabItem Header="Users">
                 <Grid>
@@ -85,7 +85,7 @@
             </TabItem>
 
             <!-- ===== Machine ===== -->
-            <TabItem Header="Machine">
+            <TabItem x:Name="tabMachine" Header="Machine">
                 <Border Style="{StaticResource Card}" VerticalAlignment="Top">
                     <StackPanel MaxWidth="520" HorizontalAlignment="Left">
                         <TextBlock Text="CMC machine on this PC" Style="{StaticResource CardTitle}" />
@@ -93,15 +93,28 @@
                                    Style="{StaticResource MutedText}" FontSize="12.5" TextWrapping="Wrap" Margin="0,0,0,14" />
 
                         <Label Content="Machine ID" Target="{Binding ElementName=txtMachineIdSetting}" />
-                        <TextBox x:Name="txtMachineIdSetting" MaxLength="20" Margin="0,0,0,12" />
+                        <TextBox x:Name="txtMachineIdSetting" TextChanged="MarkUnsaved" MaxLength="20" Margin="0,0,0,12" />
 
                         <Label Content="IP address of the machine" Target="{Binding ElementName=txtIpSetting}" />
-                        <TextBox x:Name="txtIpSetting" MaxLength="100" Margin="0,0,0,12" />
+                        <TextBox x:Name="txtIpSetting" TextChanged="MarkUnsaved" MaxLength="100" Margin="0,0,0,12" />
 
                         <Label Content="Port" Target="{Binding ElementName=txtPortSetting}" />
-                        <TextBox x:Name="txtPortSetting" MaxLength="5" Width="120" HorizontalAlignment="Left" Margin="0,0,0,12" />
+                        <TextBox x:Name="txtPortSetting" TextChanged="MarkUnsaved" MaxLength="5" Width="120" HorizontalAlignment="Left" Margin="0,0,0,12" />
 
-                        <CheckBox x:Name="chkAutoSetting" Content="Reconnect automatically if the link drops" Margin="0,0,0,16" />
+                        <Label Content="Warehouse this machine serves" Target="{Binding ElementName=cboWarehouse}" />
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox x:Name="cboWarehouse" MinHeight="38" SelectionChanged="MarkUnsaved" />
+                            <Button x:Name="btnReloadWarehouses" Grid.Column="2" Content="Reload" MinHeight="38" Padding="16,0" Click="btnReloadWarehouses_Click"
+                                    ToolTip="Ask Logiwa (through the web service) for the warehouses again" />
+                        </Grid>
+                        <TextBlock x:Name="lblWarehouseHint" Style="{StaticResource MutedText}" FontSize="12.5" TextWrapping="Wrap" Margin="0,0,0,12" />
+
+                        <CheckBox x:Name="chkAutoSetting" Click="MarkUnsaved" Content="Reconnect automatically if the link drops" Margin="0,0,0,16" />
 
                         <Button x:Name="btnSaveMachine" Content="Save machine settings" Style="{StaticResource PrimaryButton}"
                                 HorizontalAlignment="Left" MinHeight="40" Padding="18,0" Click="btnSaveMachine_Click" />

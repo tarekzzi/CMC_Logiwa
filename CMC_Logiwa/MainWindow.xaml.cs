@@ -87,6 +87,16 @@ namespace CMC_Logiwa
                 await LoadMachineSettingsAsync();   // before the sync starts: it uses the machine ID
                 StartWebSync();
                 _ = Task.Run(() => RunShippedCheckAsync(startedAt));   // background: the machine can work while Logiwa is asked
+
+                // The warehouse is required: ask for it right away instead of leaving the app half working.
+                if (!_hasWarehouse)
+                {
+                    MessageBox.Show(this,
+                        "Choose the warehouse this machine serves.\n\nOnly that warehouse's orders are downloaded, and the machine cannot be connected until it is set. Settings > Machine opens now.",
+                        "Warehouse not set", MessageBoxButton.OK, MessageBoxImage.Information);
+                    await OpenSettingsAsync(machineTab: true);
+                }
+
                 await RefreshDuplicatesAsync();
                 _duplicatesTimer.Start();
             };
@@ -118,6 +128,11 @@ namespace CMC_Logiwa
 
             if (!s.Configured)
                 text = "Web sync is off: set the web service address and API key with the Settings button.";
+            else if (s.NeedsWarehouse)
+            {
+                text = "Orders are not downloaded: choose the warehouse in Settings > Machine.";
+                brush = Res("DangerBrush");
+            }
             else if (s.Error != null)
             {
                 text = "Web sync problem: " + s.Error;
@@ -152,6 +167,15 @@ namespace CMC_Logiwa
 
         private async void btnStartConnection_Click(object sender, RoutedEventArgs e)
         {
+            if (!_hasWarehouse)
+            {
+                if (MessageBox.Show(this,
+                        "The warehouse this machine serves is not set, so the machine cannot be connected.\n\nOpen Settings > Machine now?",
+                        "Connect", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.Yes) == MessageBoxResult.Yes)
+                    await OpenSettingsAsync(machineTab: true);
+                return;
+            }
+
             var sql = new SQLManager();
 
             if (!int.TryParse(txtPort.Text, out int portNumber))
@@ -220,9 +244,14 @@ namespace CMC_Logiwa
         /// Puts the saved machine settings (database) into the Machine tab. The ID, address and port are only replaced while
         /// disconnected: an open connection keeps the values it was started with.
         /// </summary>
+        private bool _hasWarehouse;
+        private string _warehouseCode = "";
+
         private void ApplyMachineSettings(MachineSettings m, bool connected)
         {
             _autoReconnect = m.AutoReconnect;
+            _hasWarehouse = m.HasWarehouse;
+            _warehouseCode = m.WarehouseCode ?? m.WarehouseId ?? "";
             if (connected) return;
             txtMachineId.Text = m.MachineId;
             txtIPAddress.Text = m.IpAddress;
@@ -442,9 +471,11 @@ namespace CMC_Logiwa
         /// Settings: users, and the database / web service. The users part works while the machine is connected;
         /// changing the database does not (the open connection uses the old one), the window says so.
         /// </summary>
-        private async void btnSettings_Click(object sender, RoutedEventArgs e)
+        private async void btnSettings_Click(object sender, RoutedEventArgs e) => await OpenSettingsAsync(machineTab: false);
+
+        private async Task OpenSettingsAsync(bool machineTab)
         {
-            var dlg = new SettingsWindow(machineConnected: _networkManager != null && _networkManager.IsConnected) { Owner = this };
+            var dlg = new SettingsWindow(machineConnected: _networkManager != null && _networkManager.IsConnected, startOnMachineTab: machineTab) { Owner = this };
             dlg.ShowDialog();
 
             if (dlg.MachineSettingsChanged)
@@ -452,7 +483,8 @@ namespace CMC_Logiwa
                 await LoadMachineSettingsAsync();
                 _sync?.Stop();      // the sync keeps the machine ID it was started with
                 StartWebSync();
-                AppendLog($"INFO: Machine settings saved: ID {txtMachineId.Text}, {txtIPAddress.Text}:{txtPort.Text}, automatic reconnect {(_autoReconnect ? "on" : "off")}.");
+                AppendLog($"INFO: Machine settings saved: ID {txtMachineId.Text}, {txtIPAddress.Text}:{txtPort.Text}, warehouse {_warehouseCode}, automatic reconnect {(_autoReconnect ? "on" : "off")}.");
+                await overview.RefreshAsync();
             }
 
             if (!dlg.ConnectionSettingsChanged)

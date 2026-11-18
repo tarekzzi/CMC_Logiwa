@@ -9,9 +9,9 @@ so DEV and PRO can never drift apart. Run it on the packing PC (or any PC that c
   powershell -ExecutionPolicy Bypass -File .\Install-LocalDb.ps1 -Environment PRO -VerifyOnly       (changes nothing, just checks)
 
 What it does, in this order (every script is safe to re-run; nothing is deleted):
-  001 schema (creates the database), 000 app login (asks for the password, never written to disk), 002 .. 007 procedures and tables,
+  001 schema (creates the database), 000 app login (asks for the password, never written to disk), 002 .. 008 procedures and tables,
   events-data.sql (machine event texts, only when the Events table is empty), then a check that every procedure exists and the app login can run them.
-A new script (008, ...) only has to be added to $Scripts below.
+A new script (009, ...) only has to be added to $Scripts below.
 #>
 param(
     [Parameter(Mandatory)] [ValidateSet('DEV', 'PRO')] [string]$Environment,
@@ -38,7 +38,8 @@ $Scripts = @(
     '004_procs_screens_dev.sql',
     '005_procs_dashboard_dev.sql',
     '006_machine_settings_dev.sql',
-    '007_shipped_check_dev.sql'
+    '007_shipped_check_dev.sql',
+    '008_machine_warehouse_dev.sql'
 )
 $EventsFile = 'events-data.sql'
 $Placeholder = 'CHANGE_ME_BEFORE_RUNNING'
@@ -77,7 +78,7 @@ if ($ScriptsOnly) {
         [System.IO.File]::WriteAllText($target, $text, (New-Object System.Text.UTF8Encoding($false)))
         Write-Host "written $target"
     }
-    Write-Host "Run them in SSMS in this order: 001, 000 (replace $Placeholder with the login password first, do not commit it), 002 .. 007, events-data."
+    Write-Host "Run them in SSMS in this order: 001, 000 (replace $Placeholder with the login password first, do not commit it), 002 .. 008, events-data."
     return
 }
 
