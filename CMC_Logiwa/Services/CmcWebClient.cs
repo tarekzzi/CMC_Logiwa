@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -27,6 +29,15 @@ namespace CMC_Logiwa.Services
     }
 
     /// <summary>One measured box waiting to be sent: a row of sp_Outbox_GetNext. Millimetres and grams as the machine reported them.</summary>
+    /// <summary>What Logiwa says about one order. State: found, notfound, unknown (the web VM never received it) or error.</summary>
+    public sealed class OrderStatusItem
+    {
+        public string ShipmentIdentifier { get; set; }
+        public string State { get; set; }
+        public string Status { get; set; }
+        public bool Closed { get; set; }
+    }
+
     public sealed class OutboxResult
     {
         public int PackJobId { get; set; }
@@ -156,6 +167,47 @@ namespace CMC_Logiwa.Services
         }
 
         /// <summary>Checks the address and the key without downloading any label: asks for orders after a sequence number that cannot exist.</summary>
+        /// <summary>
+        /// Asks the web VM for the Logiwa status of orders (at most 50 per call). Orders the web VM cannot answer for
+        /// come back as "unknown" or "error": the caller must leave those as they are.
+        /// </summary>
+        public async Task<List<OrderStatusItem>> GetOrderStatusAsync(IEnumerable<string> shipmentIdentifiers, CancellationToken ct)
+        {
+            string json = JsonConvert.SerializeObject(new { shipmentIdentifiers = shipmentIdentifiers.ToArray() });
+            string body;
+
+            try
+            {
+                using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
+                using (var resp = await _http.PostAsync("api/cmc/order-status", content, ct).ConfigureAwait(false))
+                {
+                    if (!resp.IsSuccessStatusCode) throw new CmcWebException(Describe(resp.StatusCode));
+                    body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                }
+            }
+            catch (CmcWebException) { throw; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) { throw new CmcWebException("Cannot reach the web service: " + ex.Message, ex, unreachable: true); }
+
+            try
+            {
+                var list = new List<OrderStatusItem>();
+                foreach (JObject o in (JArray)JObject.Parse(body)["orders"] ?? new JArray())
+                    list.Add(new OrderStatusItem
+                    {
+                        ShipmentIdentifier = o.Value<string>("shipmentIdentifier"),
+                        State = o.Value<string>("state") ?? "",
+                        Status = o.Value<string>("status"),
+                        Closed = o.Value<bool?>("closed") ?? false
+                    });
+                return list;
+            }
+            catch (Exception ex) when (ex is JsonException || ex is InvalidCastException)
+            {
+                throw new CmcWebException("The web service answered, but not with an order status list.", ex);
+            }
+        }
+
         public async Task PingAsync(CancellationToken ct)
         {
             await SendAsync(() => _http.GetAsync("api/cmc/orders?afterSeq=9223372036854775000&limit=1", ct), "ping", ct);

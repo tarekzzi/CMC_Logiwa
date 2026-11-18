@@ -83,8 +83,10 @@ namespace CMC_Logiwa
             _duplicatesTimer.Tick += async (s, e) => await RefreshDuplicatesAsync();
             Loaded += async (s, e) =>
             {
+                DateTime startedAt = DateTime.Now;     // orders stored before now are "past" orders for the Logiwa check
                 await LoadMachineSettingsAsync();   // before the sync starts: it uses the machine ID
                 StartWebSync();
+                _ = Task.Run(() => RunShippedCheckAsync(startedAt));   // background: the machine can work while Logiwa is asked
                 await RefreshDuplicatesAsync();
                 _duplicatesTimer.Start();
             };
@@ -548,7 +550,7 @@ namespace CMC_Logiwa
                 return;
             }
 
-            if (ConfirmReset(item.OrderNumber))
+            if (ConfirmReset(item.OrderNumber) && await AllowResetAsync(item.OrderNumber))
             {
                 ResetOrder(item.OrderNumber);
                 await RefreshDuplicatesAsync();
@@ -595,7 +597,7 @@ namespace CMC_Logiwa
                 return;
             }
 
-            if (!ConfirmReset(orderNumber))
+            if (!ConfirmReset(orderNumber) || !await AllowResetAsync(orderNumber))
                 return;
 
             if (ResetOrder(orderNumber))
@@ -604,6 +606,72 @@ namespace CMC_Logiwa
                 txtResetOrderNumber.Focus();
             }
             await RefreshDuplicatesAsync();
+        }
+
+        // ===== Shipped in Logiwa =====
+
+        private readonly ShippedCheckService _shipped = new ShippedCheckService();
+
+        /// <summary>At start-up: asks Logiwa (through the web VM) about every order not processed yet and drops the shipped ones.</summary>
+        private async Task RunShippedCheckAsync(DateTime startedAt)
+        {
+            _shipped.OnLog -= AppendLog;
+            _shipped.OnLog += AppendLog;
+            try
+            {
+                ShippedCheckSummary s = await _shipped.RunAtStartAsync(startedAt, System.Threading.CancellationToken.None).ConfigureAwait(false);
+
+                if (s.Skipped)
+                    AppendLog($"INFO: Logiwa check skipped: {s.SkippedReason}.");
+                else if (s.Error != null)
+                    AppendLog($"ERROR: Logiwa check stopped after {s.Asked} order(s): {s.Error}");
+                else if (s.Asked > 0)
+                    AppendLog($"INFO: Logiwa check done: {s.Asked} open order(s) checked, {s.Marked} already finished in Logiwa (shipped, cancelled ...), {s.Cleared} offered again, {s.NoAnswer} without an answer.");
+
+                if (s.Marked > 0 || s.Cleared > 0)
+                    await Dispatcher.InvokeAsync(() => overview.RefreshAsync()).Task.Unwrap();
+            }
+            catch (Exception ex)
+            {
+                AppendLog("ERROR: Logiwa check failed: " + ex.Message);
+            }
+        }
+
+        /// <summary>Before a reset: Logiwa must not show the order as shipped. If it cannot be checked the operator decides.</summary>
+        private async Task<bool> AllowResetAsync(string orderNumber)
+        {
+            Mouse.OverrideCursor = Cursors.Wait;
+            (ResetVerdict verdict, string status) result;
+            try
+            {
+                using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(15)))
+                    result = await _shipped.CheckBeforeResetAsync(orderNumber, cts.Token);
+            }
+            catch (Exception)
+            {
+                result = (ResetVerdict.Unknown, null);
+            }
+            finally
+            {
+                Mouse.OverrideCursor = null;
+            }
+
+            switch (result.verdict)
+            {
+                case ResetVerdict.Closed:
+                    AppendLog($"INFO: Reset of {orderNumber} refused: finished in Logiwa ({result.status}).");
+                    MessageBox.Show(this, $"{orderNumber} is already finished in Logiwa (status: {result.status}), so it cannot be processed again.",
+                        "Reset order", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return false;
+
+                case ResetVerdict.Unknown:
+                    return MessageBox.Show(this,
+                        $"Logiwa could not be asked whether {orderNumber} is already finished (shipped, cancelled ...) (web service not reachable, not set up, or the order is unknown there).\n\nReset it anyway?",
+                        "Reset order", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
+
+                default:
+                    return true;
+            }
         }
 
         private bool ConfirmReset(string orderNumber) =>
@@ -635,6 +703,10 @@ namespace CMC_Logiwa
                     case "NOT_FOUND":
                         MessageBox.Show(this, $"{orderNumber} was not found.", "Reset order",
                             MessageBoxButton.OK, MessageBoxImage.Information);
+                        return false;
+                    case "SHIPPED":
+                        MessageBox.Show(this, $"{orderNumber} is already finished in Logiwa, so it cannot be processed again.", "Reset order",
+                            MessageBoxButton.OK, MessageBoxImage.Warning);
                         return false;
                     case "NOTHING_TO_RESET":
                         MessageBox.Show(this, $"{orderNumber} has not been processed yet, so there is nothing to reset.",

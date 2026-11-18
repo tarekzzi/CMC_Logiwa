@@ -27,7 +27,7 @@
     <UpdateRequired>false</UpdateRequired>
     <MapFileExtensions>true</MapFileExtensions>
     <ProductName>CMC Logiwa</ProductName>
-    <ApplicationRevision>5</ApplicationRevision>
+    <ApplicationRevision>6</ApplicationRevision>
     <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
     <UseApplicationTrust>false</UseApplicationTrust>
     <PublishWizardCompleted>true</PublishWizardCompleted>
@@ -133,6 +133,7 @@
     <Compile Include="Services\ScreenData.cs" />
     <Compile Include="BarLineChart.cs" />
     <Compile Include="Services\MachineSettings.cs" />
+    <Compile Include="Services\ShippedCheckService.cs" />
     <Compile Include="OverviewView.xaml.cs">
       <DependentUpon>OverviewView.xaml</DependentUpon>
     </Compile>
