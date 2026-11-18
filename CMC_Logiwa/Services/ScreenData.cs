@@ -19,6 +19,76 @@ namespace CMC_Logiwa.Services
         public int InProgress { get; set; }
     }
 
+    /// <summary>Totals of the dashboard for the chosen period and filters.</summary>
+    public sealed class DashboardSummary
+    {
+        public int Completed { get; set; }
+        public int Failed { get; set; }
+        public int Removed { get; set; }
+        public double? AvgSec { get; set; }      // average processing time (scan to END) of completed boxes
+        public int? MinSec { get; set; }
+        public int? MaxSec { get; set; }
+        public DateTime? FirstAt { get; set; }
+        public DateTime? LastAt { get; set; }
+        public int ActiveHours { get; set; }     // clock hours in which at least one box was completed
+        public DateTime? PeakHour { get; set; }
+        public int PeakCount { get; set; }
+        public int Problems => Failed + Removed;
+    }
+
+    /// <summary>One hour or one day of the dashboard charts.</summary>
+    public sealed class SeriesPoint
+    {
+        public DateTime Start { get; set; }
+        public int Completed { get; set; }
+        public int Problems { get; set; }
+        public double? AvgSec { get; set; }
+    }
+
+    /// <summary>One operator's share of the period.</summary>
+    public sealed class OperatorRow
+    {
+        public string Operator { get; set; }
+        public int Completed { get; set; }
+        public int Problems { get; set; }
+        public double? AvgSec { get; set; }
+    }
+
+    /// <summary>A quiet spell between two finished boxes.</summary>
+    public sealed class StopRow
+    {
+        public DateTime StoppedAt { get; set; }
+        public DateTime ResumedAt { get; set; }
+        public int Seconds { get; set; }
+
+        public string StoppedText => StoppedAt.ToString("yyyy-MM-dd HH:mm:ss");
+        public string ResumedText => ResumedAt.ToString("yyyy-MM-dd HH:mm:ss");
+        public string LengthText => Seconds >= 3600 ? $"{Seconds / 3600} h {Seconds % 3600 / 60} min" : $"{Seconds / 60} min {Seconds % 60} s";
+    }
+
+    /// <summary>One finished box in the dashboard list.</summary>
+    public sealed class ProcessedRow
+    {
+        public int PackJobId { get; set; }
+        public string TrackingNumber { get; set; }
+        public string OrderCode { get; set; }
+        public string ClientCode { get; set; }
+        public string Status { get; set; }
+        public DateTime FinishedAt { get; set; }
+        public int? DurationSec { get; set; }
+        public string MachineId { get; set; }
+        public string Operator { get; set; }
+        public int? LengthMm { get; set; }
+        public int? WidthMm { get; set; }
+        public int? HeightMm { get; set; }
+        public int? WeightG { get; set; }
+
+        public string FinishedText => FinishedAt.ToString("yyyy-MM-dd HH:mm:ss");
+        public string DurationText => DurationSec.HasValue ? DurationSec.Value + " s" : "";
+        public string SizeText => LengthMm > 0 && WidthMm > 0 && HeightMm > 0 ? $"{LengthMm} x {WidthMm} x {HeightMm}" : "";
+        public string WeightText => WeightG > 0 ? WeightG + " g" : "";
+    }
+
     /// <summary>One job that a scan would accept right now.</summary>
     public sealed class AvailableJob
     {
@@ -162,6 +232,133 @@ namespace CMC_Logiwa.Services
                 });
             return list;
         }
+
+        // ===== Dashboard: speed and throughput (db\005_procs_dashboard_dev.sql) =====
+
+        public static List<string> GetDashboardClients()
+        {
+            DataTable dt = new SQLManager().ExecuteStoredProcedure("dbo.sp_Dashboard_Clients", null);
+            var list = new List<string>();
+            foreach (DataRow r in dt.Rows) list.Add(Str(r, "ClientCode"));
+            return list;
+        }
+
+        public static DashboardSummary GetSummary(DateTime from, DateTime toExclusive, string search, string client)
+        {
+            DataTable dt = new SQLManager().ExecuteStoredProcedure("dbo.sp_Dashboard_Summary", FilterArgs(from, toExclusive, search, client));
+            var s = new DashboardSummary();
+            if (dt.Rows.Count == 0) return s;
+            DataRow r = dt.Rows[0];
+            s.Completed = Int(r, "Completed");
+            s.Failed = Int(r, "Failed");
+            s.Removed = Int(r, "Removed");
+            s.AvgSec = r["AvgSec"] == DBNull.Value ? (double?)null : Convert.ToDouble(r["AvgSec"], CultureInfo.InvariantCulture);
+            s.MinSec = NullableInt(r, "MinSec");
+            s.MaxSec = NullableInt(r, "MaxSec");
+            s.FirstAt = r["FirstAt"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(r["FirstAt"]);
+            s.LastAt = r["LastAt"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(r["LastAt"]);
+            s.ActiveHours = Int(r, "ActiveHours");
+            s.PeakHour = r["PeakHour"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(r["PeakHour"]);
+            s.PeakCount = Int(r, "PeakCount");
+            return s;
+        }
+
+        /// <param name="hourly">true = one point per hour, false = one per day.</param>
+        public static List<SeriesPoint> GetSeries(DateTime from, DateTime toExclusive, bool hourly, string search, string client)
+        {
+            var args = FilterArgs(from, toExclusive, search, client);
+            args["@Bucket"] = hourly ? "H" : "D";
+            DataTable dt = new SQLManager().ExecuteStoredProcedure("dbo.sp_Dashboard_Series", args);
+
+            var found = new Dictionary<DateTime, SeriesPoint>();
+            foreach (DataRow r in dt.Rows)
+            {
+                var p = new SeriesPoint
+                {
+                    Start = Convert.ToDateTime(r["BucketStart"]),
+                    Completed = Int(r, "Completed"),
+                    Problems = Int(r, "Problems"),
+                    AvgSec = r["AvgSec"] == DBNull.Value ? (double?)null : Convert.ToDouble(r["AvgSec"], CultureInfo.InvariantCulture)
+                };
+                found[p.Start] = p;
+            }
+
+            // fill the empty hours/days so the chart axis is continuous
+            var list = new List<SeriesPoint>();
+            DateTime t = hourly ? new DateTime(from.Year, from.Month, from.Day, from.Hour, 0, 0) : from.Date;
+            for (; t < toExclusive; t = hourly ? t.AddHours(1) : t.AddDays(1))
+                list.Add(found.TryGetValue(t, out var hit) ? hit : new SeriesPoint { Start = t });
+            return list;
+        }
+
+        public static List<ProcessedRow> GetProcessed(DateTime from, DateTime toExclusive, string search, string client, string status, int max)
+        {
+            var args = FilterArgs(from, toExclusive, search, client);
+            args["@Status"] = string.IsNullOrWhiteSpace(status) ? null : status;
+            args["@Max"] = max;
+            DataTable dt = new SQLManager().ExecuteStoredProcedure("dbo.sp_List_Processed", args);
+
+            var list = new List<ProcessedRow>();
+            foreach (DataRow r in dt.Rows)
+                list.Add(new ProcessedRow
+                {
+                    PackJobId = Convert.ToInt32(r["PackJobID"]),
+                    TrackingNumber = Str(r, "TrackingNumber"),
+                    OrderCode = Str(r, "OrderCode"),
+                    ClientCode = Str(r, "ClientCode"),
+                    Status = Str(r, "OrderStatus"),
+                    FinishedAt = Convert.ToDateTime(r["FinishedAt"]),
+                    DurationSec = NullableInt(r, "DurationSec"),
+                    MachineId = Str(r, "MachineId"),
+                    Operator = Str(r, "Operator"),
+                    LengthMm = NullableInt(r, "BoxSizeL"),
+                    WidthMm = NullableInt(r, "BoxSizeW"),
+                    HeightMm = NullableInt(r, "BoxSizeH"),
+                    WeightG = NullableInt(r, "WeightScale")
+                });
+            return list;
+        }
+
+        public static List<OperatorRow> GetOperators(DateTime from, DateTime toExclusive, string search, string client)
+        {
+            DataTable dt = new SQLManager().ExecuteStoredProcedure("dbo.sp_Dashboard_Operators", FilterArgs(from, toExclusive, search, client));
+            var list = new List<OperatorRow>();
+            foreach (DataRow r in dt.Rows)
+                list.Add(new OperatorRow
+                {
+                    Operator = Str(r, "Operator"),
+                    Completed = Int(r, "Completed"),
+                    Problems = Int(r, "Problems"),
+                    AvgSec = r["AvgSec"] == DBNull.Value ? (double?)null : Convert.ToDouble(r["AvgSec"], CultureInfo.InvariantCulture)
+                });
+            return list;
+        }
+
+        /// <param name="minMinutes">Shortest quiet spell that counts as a stop.</param>
+        public static List<StopRow> GetStops(DateTime from, DateTime toExclusive, int minMinutes, string search, string client)
+        {
+            var args = FilterArgs(from, toExclusive, search, client);
+            args["@MinMinutes"] = minMinutes;
+            DataTable dt = new SQLManager().ExecuteStoredProcedure("dbo.sp_Dashboard_Stops", args);
+            var list = new List<StopRow>();
+            foreach (DataRow r in dt.Rows)
+                list.Add(new StopRow
+                {
+                    StoppedAt = Convert.ToDateTime(r["StoppedAt"]),
+                    ResumedAt = Convert.ToDateTime(r["ResumedAt"]),
+                    Seconds = Convert.ToInt32(r["Seconds"], CultureInfo.InvariantCulture)
+                });
+            return list;
+        }
+
+        private static Dictionary<string, object> FilterArgs(DateTime from, DateTime toExclusive, string search, string client) =>
+            new Dictionary<string, object>
+            {
+                { "@From", from },
+                { "@To", toExclusive },
+                { "@Search", string.IsNullOrWhiteSpace(search) ? null : search.Trim() },
+                { "@Client", string.IsNullOrWhiteSpace(client) ? null : client }
+            };
 
         public static List<JobEvent> GetJobEvents(int packJobId)
         {

@@ -259,15 +259,20 @@ namespace CMC_Logiwa.Services
         private Task _listenTask;
 
         private Task _heartbeatTask;
-        private Task _heartbeatMonitorTask;
 
         private readonly SemaphoreSlim _sendLock = new SemaphoreSlim(1, 1);
         private readonly SemaphoreSlim _disconnectLock = new SemaphoreSlim(1, 1);
 
         private DateTime _lastHeartbeatReceivedUtc = DateTime.MinValue;
-        private readonly TimeSpan _heartbeatInterval = TimeSpan.FromSeconds(5);
-        private readonly TimeSpan _heartbeatTimeout = TimeSpan.FromSeconds(15);
-        
+
+        // Link supervision (protocol 2.3: HBT can be sent by either side and must be answered with hbt at once).
+        // Anything received from the machine counts as proof of life. After HbtAfterIdle of silence we send an HBT;
+        // after LostAfterIdle of silence the link is declared lost.
+        private static readonly TimeSpan HbtAfterIdle = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan LostAfterIdle = TimeSpan.FromSeconds(30);
+        private long _lastActivityTicksUtc = DateTime.UtcNow.Ticks;
+        private int _lostRaised;          // 0/1: the loss of one connection is reported once
+        private volatile bool _userClosed; // true after DisconnectAsync was asked for (no loss event then)
 
         private readonly FormatProcessMessages _formatter;
         private readonly SQLManager _sqlManager;
@@ -277,6 +282,8 @@ namespace CMC_Logiwa.Services
         public event Action<string> OnError;
         public event Action OnConnected;
         public event Action OnDisconnected;
+        /// <summary>The link dropped by itself (machine closed it, network error or silence). The argument says why.</summary>
+        public event Action<string> OnConnectionLost;
         public string ServerIp { get; }
         public int Port { get; }
 
@@ -294,32 +301,110 @@ namespace CMC_Logiwa.Services
             MachineId = machineId;
         }
 
-        public async Task ConnectAsync()
+        /// <param name="silent">true = no message box on failure (automatic reconnect attempts); the reason goes to the log.</param>
+        /// <returns>true when the connection is open.</returns>
+        public async Task<bool> ConnectAsync(bool silent = false)
         {
+            TcpClient client = null;
             try
             {
+                _userClosed = false;
                 _lastHeartbeatReceivedUtc = DateTime.UtcNow;
-                _client = new TcpClient();
-                _client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+                client = new TcpClient();
+                client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
 
-                await _client.ConnectAsync(ServerIp, Port);
+                // Connect with a 5 s limit, so a machine that is switched off does not block for the OS default (~21 s).
+                Task connect = client.ConnectAsync(ServerIp, Port);
+                if (await Task.WhenAny(connect, Task.Delay(TimeSpan.FromSeconds(5))) != connect)
+                {
+                    client.Close();
+                    var ignored = connect.ContinueWith(t => { var _ = t.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
+                    throw new TimeoutException($"No answer from {ServerIp}:{Port} within 5 seconds.");
+                }
+                await connect;
 
+                _client = client;
                 _stream = _client.GetStream();
                 _reader = new StreamReader(_stream, Encoding.ASCII, false, 1024, true);
 
+                Interlocked.Exchange(ref _lostRaised, 0);
+                Interlocked.Exchange(ref _lastActivityTicksUtc, DateTime.UtcNow.Ticks);
+
                 _cts = new CancellationTokenSource();
                 _listenTask = ListenForMessagesAsync(_cts.Token);
-                //_heartbeatTask = SendHeartbeatLoopAsync(_cts.Token);
-                //_heartbeatMonitorTask = MonitorHeartbeatAsync(_cts.Token);
+                _heartbeatTask = SuperviseLinkAsync(_cts.Token);
 
                 LogInfo($"Connected to {ServerIp}:{Port}");
 
                 OnConnected?.Invoke();
+                return true;
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Connection failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                try { client?.Close(); } catch { }
+                if (silent)
+                    LogError($"Connection to {ServerIp}:{Port} failed: {ex.Message}");
+                else
+                    MessageBox.Show($"Connection failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
             }
+        }
+
+        private void Touch() => Interlocked.Exchange(ref _lastActivityTicksUtc, DateTime.UtcNow.Ticks);
+
+        /// <summary>Sends an HBT after a quiet spell and declares the link lost after a long one.</summary>
+        private async Task SuperviseLinkAsync(CancellationToken token)
+        {
+            DateTime lastHbtSentUtc = DateTime.MinValue;
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    await Task.Delay(1000, token);
+
+                    TimeSpan idle = DateTime.UtcNow - new DateTime(Interlocked.Read(ref _lastActivityTicksUtc), DateTimeKind.Utc);
+
+                    if (idle > LostAfterIdle)
+                    {
+                        RaiseConnectionLost($"nothing received from the machine for {(int)idle.TotalSeconds} s (heartbeat not answered)");
+                        return;
+                    }
+
+                    if (idle > HbtAfterIdle && DateTime.UtcNow - lastHbtSentUtc > HbtAfterIdle)
+                    {
+                        lastHbtSentUtc = DateTime.UtcNow;
+                        await SendAsync(_formatter.FormatHeartbeatRequest(MachineId));
+                    }
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                if (!token.IsCancellationRequested)
+                    RaiseConnectionLost("cannot send to the machine: " + ex.Message);
+            }
+        }
+
+        /// <summary>Reports a dropped link once, closes the socket and tells the UI. Not raised after a deliberate disconnect.</summary>
+        private void RaiseConnectionLost(string reason)
+        {
+            if (_userClosed) return;
+            if (Interlocked.Exchange(ref _lostRaised, 1) == 1) return;
+
+            // Off the listen/supervise task: closing the connection waits for those tasks.
+            Task.Run(async () =>
+            {
+                try
+                {
+                    LogError("Connection lost: " + reason);
+                    await DisconnectAsync();
+                }
+                catch { }
+                finally
+                {
+                    try { OnConnectionLost?.Invoke(reason); } catch { }
+                }
+            });
         }
 
         private async Task ListenForMessagesAsync(CancellationToken token)
@@ -330,14 +415,17 @@ namespace CMC_Logiwa.Services
 
             try
             {
-                while (!token.IsCancellationRequested && IsConnected)
+                while (!token.IsCancellationRequested)
                 {
                     int charsRead = await _reader.ReadAsync(buffer, 0, buffer.Length);
                     if (charsRead == 0)
                     {
-                        await Task.Delay(100, token);
-                        continue;
+                        // end of stream: the machine closed the connection
+                        RaiseConnectionLost("the machine closed the connection");
+                        return;
                     }
+
+                    Touch();
 
                     for (int i = 0; i < charsRead; i++)
                     {
@@ -373,12 +461,7 @@ namespace CMC_Logiwa.Services
             catch (Exception ex)
             {
                 if (!token.IsCancellationRequested)
-                    LogError($"Read error: {ex.Message}");
-            }
-            finally
-            {
-                if (!token.IsCancellationRequested)
-                    LogError("Connection terminated unexpectedly");
+                    RaiseConnectionLost("read error: " + ex.Message);
             }
         }
 
@@ -478,6 +561,7 @@ namespace CMC_Logiwa.Services
 
         public async Task DisconnectAsync()
         {
+            _userClosed = true;   // a deliberate (or already reported) close is not a "lost" link
             await _disconnectLock.WaitAsync();
             try
             {
@@ -485,6 +569,8 @@ namespace CMC_Logiwa.Services
 
                 if (_listenTask != null)
                     await Task.WhenAny(_listenTask, Task.Delay(1000));
+                if (_heartbeatTask != null)
+                    await Task.WhenAny(_heartbeatTask, Task.Delay(1000));
 
                 CleanupResources();
                 LogInfo("Disconnected");
@@ -511,6 +597,7 @@ namespace CMC_Logiwa.Services
             _cts = null;
 
             _listenTask = null;
+            _heartbeatTask = null;
         }
 
         private void LogProtocol(string payload, bool isSent)
@@ -526,7 +613,7 @@ namespace CMC_Logiwa.Services
 
         public void Dispose()
         {
-            DisconnectAsync().Wait();
+            try { DisconnectAsync().Wait(2000); } catch { }
             _sendLock?.Dispose();
             _disconnectLock?.Dispose();
             _cts?.Dispose();

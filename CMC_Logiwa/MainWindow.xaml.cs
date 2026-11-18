@@ -89,6 +89,8 @@ namespace CMC_Logiwa
             };
             Closed += (s, e) =>
             {
+                _wantConnected = false;
+                StopReconnect();
                 _duplicatesTimer.Stop();
                 _sync?.Stop();
             };
@@ -178,17 +180,94 @@ namespace CMC_Logiwa
 
             _networkManager.OnConnected += () => Dispatcher.BeginInvoke(new Action(() => SetConnectionState(true)));
             _networkManager.OnDisconnected += () => Dispatcher.BeginInvoke(new Action(() => SetConnectionState(false)));
+            _networkManager.OnConnectionLost += reason => Dispatcher.BeginInvoke(new Action(() => HandleConnectionLost(reason)));
 
             btnStartConnection.IsEnabled = false;
-            await _networkManager.ConnectAsync();
-            if (!_networkManager.IsConnected)
+            _wantConnected = true;
+            bool ok = await _networkManager.ConnectAsync();
+            if (!ok)
+            {
+                _wantConnected = false;
                 SetConnectionState(false);
+            }
+            else
+            {
+                lblLink.Text = "";
+            }
         }
 
         private async void btnEndConnection_Click(object sender, RoutedEventArgs e)
         {
+            _wantConnected = false;        // a deliberate disconnect: never reconnect on its own
+            StopReconnect();
+            lblLink.Text = "";
             if (_networkManager != null)
                 await _networkManager.DisconnectAsync();
+        }
+
+        // ===== Automatic reconnect =====
+        // The CW1000 is the TCP server and this app the client, so after a drop we simply try again every 3 s
+        // (the same interval the machine uses when it is the client, protocol 2.3).
+
+        private static readonly TimeSpan ReconnectEvery = TimeSpan.FromSeconds(3);
+        private bool _wantConnected;
+        private System.Threading.CancellationTokenSource _reconnectCts;
+        private DateTime _linkLostAt;
+
+        private void HandleConnectionLost(string reason)
+        {
+            SetConnectionState(false);
+            _linkLostAt = DateTime.Now;
+            lblLink.Text = $"Link lost at {_linkLostAt:HH:mm:ss}: {reason}.";
+            lblLink.Foreground = Res("DangerBrush");
+
+            if (_wantConnected && chkAutoReconnect.IsChecked == true)
+                StartReconnect();
+            else
+                _wantConnected = false;
+        }
+
+        private void StartReconnect()
+        {
+            StopReconnect();
+            var cts = new System.Threading.CancellationTokenSource();
+            _reconnectCts = cts;
+            _ = ReconnectLoopAsync(cts.Token);
+        }
+
+        private void StopReconnect()
+        {
+            try { _reconnectCts?.Cancel(); } catch { }
+            _reconnectCts = null;
+        }
+
+        private async Task ReconnectLoopAsync(System.Threading.CancellationToken ct)
+        {
+            int attempt = 0;
+            try
+            {
+                while (!ct.IsCancellationRequested)
+                {
+                    attempt++;
+                    pillText.Text = "Reconnecting…";
+                    lblLink.Text = $"Link lost at {_linkLostAt:HH:mm:ss}. Reconnecting automatically (attempt {attempt})…";
+                    btnStartConnection.IsEnabled = false;
+                    btnEndConnection.IsEnabled = true;
+
+                    if (_networkManager != null && await _networkManager.ConnectAsync(silent: true))
+                    {
+                        if (ct.IsCancellationRequested) { await _networkManager.DisconnectAsync(); return; }
+                        var gap = DateTime.Now - _linkLostAt;
+                        AppendLog($"INFO: Reconnected after {(int)gap.TotalSeconds} s ({attempt} attempt(s)).");
+                        lblLink.Text = $"Reconnected at {DateTime.Now:HH:mm:ss} (was down {(int)gap.TotalSeconds} s).";
+                        lblLink.Foreground = Res("MutedBrush");
+                        return;
+                    }
+
+                    await Task.Delay(ReconnectEvery, ct);
+                }
+            }
+            catch (OperationCanceledException) { }
         }
 
         // ===== Message log =====
