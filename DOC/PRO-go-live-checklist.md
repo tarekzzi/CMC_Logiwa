@@ -32,12 +32,13 @@ only configuration differs. Tick the boxes in order. A step marked **(you decide
 
 ## 2. SQL VM: web database `Logiwa_CMC_PRO`
 - [ ] Create database `Logiwa_CMC_PRO` (same collation as DEV).
-- [ ] Run `db\schema.sql` (Integration repo) on it with an admin login. It is the full EF migration script and safe to re-run.
+- [ ] Run `db\schema.sql` (Integration repo, regenerated 2026-11-18: it now holds all 3 migrations, InitialCreate + AddLabelSyncSeq + AddShipmentResults) on `Logiwa_CMC_PRO` with an admin login: in SSMS open the file, choose `Logiwa_CMC_PRO` in the database drop-down (the script has no USE), run. It is idempotent: it only applies migrations missing from `__EFMigrationsHistory`, so it also updates a PRO database created earlier, and running it twice is harmless. Check: `SELECT MigrationId FROM dbo.__EFMigrationsHistory` shows 3 rows and the table `ShipmentResults` exists.
 - [ ] Create login `Logiwa_CMC_app_pro` with a new password, user in `Logiwa_CMC_PRO`, roles `db_datareader` + `db_datawriter` only (the app cannot change the schema).
 - [ ] Put the connection string in the PRO vault (step 3). Write the password only in the vault and your password manager.
 
 ## 3. Key Vault `kv-logiwa-cmc-pro`
-Create it like the DEV vault; the web VM's managed identity needs read access to secrets.
+Create it like the DEV vault. The vault uses Azure RBAC (not access policies): the web VM's managed identity needs the role **Key Vault Secrets User** on it, or the site and `--register-webhook` crash at start-up with a 403 `ForbiddenByRbac`.
+- [ ] IAM: vault > Access control (IAM) > Add role assignment > **Key Vault Secrets User** > Managed identity (or search object id `74f3a413-8e4f-4ac3-999c-22be191f2b52`) > the web VM. Wait a few minutes, recycle the pool `Logiwa_CMC_PRO`.
 - [x] `ConnectionStrings--Sql` = connection string to `Logiwa_CMC_PRO` with `Logiwa_CMC_app_pro`
 - [x] `Webhook--Secret` = a NEW long random URL-safe secret (not the DEV one)
 - [x] `Logiwa--Email` and `Logiwa--Password` = the Logiwa production user
@@ -54,8 +55,8 @@ Create it like the DEV vault; the web VM's managed identity needs read access to
   - `Logiwa__BaseUrl` = `https://myapi.logiwa.com/v3.1/` (DEV sets the sandbox URL; PRO must not)
   - `Webhook__AllowedIps__0` = `18.116.226.248`, `Webhook__AllowedIps__1` = `3.151.75.183` (Logiwa v1 webhook IPs; decided: keep both. If the first real webhook is refused with 403, the web VM log shows the caller IP: correct the list then)
   - `OrderStatus__ClosedStatuses__0..n` = the exact Logiwa status names from step 0 (the default list is Shipped, Delivered, Cancelled, Canceled, Deleted)
-- [ ] Deploy: copy `cmc-logiwa.zip` and `Install.ps1` to the VM, then (elevated PowerShell)
-      `.\Install.ps1 -Url https://logiwacmc.fulfilmentaustralia.com.au/webhooks/logiwa -Target C:\inetpub\LogiwaCMC\PRO`
+- [ ] Deploy: copy `cmc-logiwa.zip` and the NEW `Install.ps1` (it now requires `-Environment`) to the VM, then (elevated PowerShell, from the folder holding both files)
+      `.\Install.ps1 -Environment PRO -Url https://logiwacmc.fulfilmentaustralia.com.au/webhooks/logiwa`  (an older Install.ps1 defaults to the DEV folder: with it you MUST add `-Target C:\inetpub\LogiwaCMC\PRO`)
       The last step must report **405** for the GET (the route is POST only).
 - [ ] Recycle the pool after any vault change: `%windir%\system32\inetsrv\appcmd recycle apppool /apppool.name:"Logiwa_CMC_PRO"`.
 - [ ] Check the log in `C:\inetpub\LogiwaCMC\PRO\logs` for start-up errors (missing secret, SQL login).
@@ -80,7 +81,7 @@ On the packing PC, as a SQL sysadmin, from the `CMC_Logiwa\db` folder (the same 
 
 ## 7. Go-live
 - [ ] Machine idle. Register the production webhook (web VM, in the site folder):
-      `dotnet CmcLogiwa.Api.dll --register-webhook`  (prints the address with the secret masked; exit code 0 = ok; Logiwa may take a few minutes to activate it).
+      From the PRO folder, in the same PowerShell session set the plain settings first (the command runs outside IIS, so the pool variables are not there): `cd C:\inetpub\LogiwaCMC\PRO` then `$env:ASPNETCORE_ENVIRONMENT='Production'; $env:KeyVault__Uri='https://kv-logiwa-cmc-pro.vault.azure.net/'; $env:Webhook__PublicBaseUrl='https://logiwacmc.fulfilmentaustralia.com.au'; $env:Logiwa__BaseUrl='https://myapi.logiwa.com/v3.1/'` then `dotnet .\CmcLogiwa.Api.dll --register-webhook`  (prints the address with the secret masked; exit code 0 = ok; Logiwa may take a few minutes to activate it).
 - [ ] Take **one real order** to ReadyToShip in Logiwa. Check in order: web VM log (webhook received, order fetched, label stored) -> packing PC sync receives it -> scan on the machine -> END -> web VM log "result" written -> weight and size on the Logiwa license plate.
 - [ ] Check the shipped check: restart the app, the log shows "Logiwa check done ...".
 - [ ] Check the dashboard counts it, and Errors shows nothing unexpected.
