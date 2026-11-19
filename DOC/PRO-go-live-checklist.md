@@ -42,7 +42,7 @@ Create it like the DEV vault. The vault uses Azure RBAC (not access policies): t
 - [x] `ConnectionStrings--Sql` = connection string to `Logiwa_CMC_PRO` with `Logiwa_CMC_app_pro`
 - [x] `Webhook--Secret` = a NEW long random URL-safe secret (not the DEV one)
 - [x] `Logiwa--Email` and `Logiwa--Password` = the Logiwa production user
-- [x] `CmcApi--ApiKeyHashes--0` = hash of the PRO key. Create it on the dev PC: `powershell -ExecutionPolicy Bypass -File CMC_VER1\DOC\New-CmcApiKey.ps1 -Environment PRO`.
+- [x] `CmcApi--ApiKeyHashes--0` = hash of the PRO key. Create it on the dev PC: `powershell -ExecutionPolicy Bypass -File CMC_Logiwa_Integration\DOC\New-CmcApiKey.ps1 -Environment PRO`.
       The KEY is shown once: store it in the password manager as "CMC API key PRO". Only the HASH goes to the vault. A second packing PC later = `CmcApi--ApiKeyHashes--1`.
 - [x] Skipped for now (decided): `CmcApi--AllowedIps--0` = public IP of the packing PC (only if it is fixed; a wrong value locks the PC out).
 

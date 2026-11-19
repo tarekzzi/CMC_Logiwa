@@ -1,0 +1,17 @@
+CMC_Logiwa DEV database: update (you already ran 001, 000, 002 before)
+=====================================================================
+Server: TAREK-ZAKI\TAREKSMART2025   Admin login (sysadmin), SSMS. Folder: C:\Users\tarek\Desktop\Logiwa-CMC\CMC_Logiwa\db\
+
+Run these, in this order (all safe to re-run). Do NOT run 000 again.
+
+A) First export the V1 event codes (one time, read-only):
+   powershell -ExecutionPolicy Bypass -File "C:\Users\tarek\Desktop\Logiwa-CMC\CMC_VER1\DOC\export-v1-events.ps1"
+   (same answers as before: TAREK-ZAKI\TAREKSMART, CMC, W). It writes DOC\v1-events.sql. Tell Claude when done, I will check it first.
+
+B) Then in SSMS on TAREK-ZAKI\TAREKSMART2025 (SQLCMD -I if you use the command line):
+   1) 001_schema_dev.sql          adds the new Events table (existing data is kept)
+   2) 002_procs_dev.sql           updated scan procedure (now stores the scan counter)
+   3) 003_procs_machine_dev.sql   NEW: the machine procedures (ACK, PRN, LAB, END, REM)
+   4) DOC\v1-events.sql           fills the Events table (open it in SSMS with database Local_CMC_Logiwa_DEV selected, run it)
+
+The login CMC_Logiwa_app_dev already has EXECUTE on the whole dbo schema, so the new procedures need no extra grants.

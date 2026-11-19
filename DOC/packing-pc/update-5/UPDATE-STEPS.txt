@@ -1,0 +1,41 @@
+CMC_Logiwa update 5 (on the CMC / packing PC)
+=============================================
+What changes (the screens):
+ - The main window now has three tabs.
+     Overview  jobs processed today / this week (from Monday) / this month, the number available for the machine now
+               (plus how many wait for a label and how many are on the machine), and the list of the available jobs.
+               Refreshes every 10 seconds.
+     Machine   what was on the main window before: connection, duplicate scans, reset, message log.
+     Errors    boxes that did not pack (Failed or Removed) with the reason the machine reported. Filter by tracking number,
+               job number or order code (part of it is enough) and by date (last 7 days to start with). Click a row to see
+               every step the machine reported for that job. Search after changing a filter (Enter works in the text box).
+ - Settings (header button) now opens a Settings window:
+     Users     add a user, set a new password for the selected user, switch a user off or on. Nothing is deleted.
+               The last active user cannot be switched off, and you cannot switch yourself off.
+               Works while the machine is connected.
+     Database and web service   shows this PC's settings; "Change ..." opens the same screen as before (not while connected).
+ - The machine connection screen starts with IP address 10.2.1.201 (the same build is used for DEV and PRO).
+ Includes everything from updates 3 and 4. Needs updates 2 and the result push web VM (see update-4\UPDATE-STEPS.txt).
+
+1) Database (about 5 seconds). Open PowerShell in this update-5 folder and paste ONE line:
+     & ([scriptblock]::Create(((Get-Content -Raw .\run-sql-file.ps1) -replace 'Split-Path.*Path','(Get-Location).Path')))
+   Server: press Enter for CMC_CONTROL\CMC_CONTROL, then W (Windows) or S (SQL login) for an admin login.
+   It runs update-5-screens.sql: six new procedures (sp_User_List, sp_User_SetActive, sp_Dashboard_Counts, sp_List_AvailableJobs,
+   sp_List_Errors, sp_List_PackJobEvents). Nothing is changed or deleted. Safe to run twice.
+   If update 3 was not installed yet, run its script too (update-3\update-3-throttle.sql).
+
+2) App. Close CMC_Logiwa. Unzip CMC_Logiwa_app.zip over the old folder (replace the files) and start CMC_Logiwa.exe.
+   Check the file first:  Get-FileHash .\CMC_Logiwa_app.zip -Algorithm SHA256
+   must be      7584A907538BE7F37D210286173255BBEF9C3687E77881D6640C2129A0EE4FCE
+   Your database settings, users and the web service address / API key are kept.
+
+3) Check:
+   a) Overview: the figures appear. Compare "Available to process" with
+        SELECT COUNT(*) FROM dbo.PackJob WHERE IsCurrent = 1 AND OrderStatus = N'Ready';
+   b) Errors: 794910372326 (Error Matching BCLabel) is listed with that reason; type 7949 in the filter and press Search;
+      click the row: the steps (Scan, ACK, PRN, LAB, END) appear below.
+   c) Settings > Users: add a test user, log out and in with it, switch it off, check it cannot log in, switch it on again.
+   d) Machine tab: the IP address is 10.2.1.201.
+
+Note: "processed" counts finished boxes (status Completed) at the time they finished. A box that was reset and run again counts
+once per run. The month figure also reads the archive, so it does not change when the daily archive runs.

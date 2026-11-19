@@ -1,0 +1,65 @@
+CMC_Logiwa DEV test on the PACKING PC
+=====================================
+Copy this whole folder (packing-pc) to the packing PC, e.g. with a USB stick:
+  - packing-pc-dev-setup.sql   the database (one script)
+  - CMC_Logiwa_app.zip         the app
+The barcodes are in DOC\test-barcodes.html on the dev PC (print it there, or open it on a PC with internet).
+
+Nothing here touches V1 or its database (CMC). It adds a NEW database next to it.
+
+STEP 1 - create the database and the login (EASY WAY, on the CMC / packing PC)
+  Open PowerShell in this folder, as a Windows user that is sysadmin on CMC_CONTROL\CMC_CONTROL, and run:
+     powershell -ExecutionPolicy Bypass -File ".\run-setup.ps1"
+  It asks: server (press Enter for CMC_CONTROL\CMC_CONTROL), W or S for your admin login, then the NEW password for the login
+  CMC_Logiwa_app_dev (typed twice, hidden). It creates the database, the login, tables, procedures, event codes and the 3 test cartons,
+  then checks everything and tests the new login. At the end it should say "All good" and "tables=8 procedures=27 event codes=33 cartons=3".
+  packing-pc-dev-setup.sql must stay in the same folder. Safe to run again. Nothing touches the V1 database (CMC).
+  If it stops with an error, copy the red text and tell Claude.
+
+IF POWERSHELL SAYS "running scripts is disabled on this system"
+  Use this instead (works without changing any policy). Open PowerShell IN THIS FOLDER and paste ONE line:
+     & ([scriptblock]::Create((Get-Content -Raw .\run-setup.ps1)))
+  and later, for the results:
+     & ([scriptblock]::Create((Get-Content -Raw .\export-test-results.ps1)))
+  (Use the NEW copies of the two scripts from the dev PC; older copies do not work this way.)
+  Or run the first form with the bypass flag:   powershell -ExecutionPolicy Bypass -File ".\run-setup.ps1"
+  If the company blocks even that, use the SSMS alternative below.
+
+STEP 1 (ALTERNATIVE, only if the easy way is not possible) - SSMS, connected as an admin / sysadmin
+  a) Open packing-pc-dev-setup.sql
+  b) Edit > Find and Replace > Replace All:   CHANGE_ME_BEFORE_RUNNING   ->   a password you choose
+     (a strong password: 12+ characters, upper + lower case, digits and a symbol)
+  c) Press Execute (F5). The last lines should list 3 test cartons:
+        1JDQ12002728  Ready,  1JDQ12002727  Ready,  TESTNOLABEL1  NoLabel
+  d) Do NOT save the edited script anywhere shared (it now contains the password).
+  If the SQL Server on that PC only allows Windows logins, switch it to "SQL Server and Windows Authentication"
+  (server Properties > Security) and restart the SQL Server service, then run the script again.
+
+STEP 2 - app
+  a) Unzip CMC_Logiwa_app.zip to C:\CMC_Logiwa_DEV (any folder you like)
+  b) Run CMC_Logiwa.exe. Windows needs .NET Framework 4.7.2 or later (Windows 10/11 already have it).
+  c) First start shows "Database settings":
+        Environment: DEV
+        Server:      the SQL Server name on that PC, e.g. <PCNAME>\<INSTANCE>   (or just <PCNAME> for a default instance)
+        Database:    Local_CMC_Logiwa_DEV
+        SQL login:   CMC_Logiwa_app_dev
+        Password:    the password from step 1
+     Press "Test and save". It only saves when it can connect and finds the tables.
+  d) The login window then asks you to create the first user (any username and password).
+
+STEP 3 - the test
+  a) Machine connection: IP address and port of the CMC machine, and its Machine ID, then Connect.
+  b) Scan the barcodes from test-barcodes.html:
+        1JDQ12002728   good carton: accepted, label printed, carton goes through. Scan it again: Duplicate.
+        1JDQ12002727   second good carton (use it to try a failure)
+        TESTNOLABEL1   "No label, try again later"
+        NOSUCH99999    "Not found, try again later"
+  c) Watch the message log on the right: failures appear in red automatically.
+  d) Afterwards run export-test-results.ps1 (in this folder, on the packing PC):
+        powershell -ExecutionPolicy Bypass -File ".\export-test-results.ps1"
+     Server: CMC_CONTROL\CMC_CONTROL (press Enter), database Local_CMC_Logiwa_DEV (default), then W (Windows) or S (SQL login).
+     It writes test-results.txt (carton records and history; the label text is not included).
+     Copy test-results.txt back to the dev PC (DOC folder) and tell Claude what you saw on the machine and in the message log.
+  Server name for the Database settings screen in step 2c:  CMC_CONTROL\CMC_CONTROL
+
+When finished: DOC\cleanup-test-cartons.sql removes the test cartons (run it on the packing PC's Local_CMC_Logiwa_DEV).

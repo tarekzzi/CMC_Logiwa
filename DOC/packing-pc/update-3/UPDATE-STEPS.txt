@@ -1,0 +1,37 @@
+CMC_Logiwa update 3 (on the CMC / packing PC)
+=============================================
+What changes:
+ - A label request that keeps failing no longer holds back the other requests. Before, the requests were sent oldest first and
+   stopped at the first problem, so one bad request (it happened with TESTNOLABEL1 before update 2) blocked every later one.
+   Now every failure is recorded on that request alone, its next try is pushed out (10 s, 20 s ... up to 5 minutes) and the
+   others are sent. Only a web service that cannot be reached at all stops the run (the others would only time out too).
+ - The database now asks for a missing label at most once every 2 minutes per tracking number, also when the previous
+   request was closed because Logiwa does not know the number. Before, every scan of such a record asked again.
+ Needs update 2 to be installed first. The web VM does not change.
+
+1) Database (about 5 seconds). Open PowerShell in this update-3 folder and paste ONE line:
+     & ([scriptblock]::Create(((Get-Content -Raw .\run-sql-file.ps1) -replace 'Split-Path.*Path','(Get-Location).Path')))
+   Server: press Enter for CMC_CONTROL\CMC_CONTROL, then W (Windows) or S (SQL login) for an admin login.
+   It runs update-3-throttle.sql. At the end: "Done. ... steps ran without errors."
+   Nothing is deleted. Safe to run twice.
+
+2) App. Close CMC_Logiwa. Unzip CMC_Logiwa_app.zip over the old folder (replace the files) and start CMC_Logiwa.exe.
+   Check the file first:  Get-FileHash .\CMC_Logiwa_app.zip -Algorithm SHA256
+   must be      B8B8BF698BE1BBE74EED6B330730F29F008B4FC2A8C58CE4E912CCEF5B67A4F6
+   Your database settings, users and the web service address / API key are kept.
+
+3) Test the throttle on a record without label that Logiwa does not know (TESTNOLABEL1 is such a record on the DEV PC):
+     a) Scan it. "No label, try again later". Within about 20 s the log shows "Label requested for ..." and
+        "Logiwa has no order for ...".
+     b) Scan it again within 2 minutes: "No label" again, but NO new "Label requested" line.
+        SELECT RequestId, OrderNumber, Status, RequestedAt FROM dbo.LabelRequest WHERE OrderNumber = 'TESTNOLABEL1' ORDER BY RequestId DESC;
+        must show only ONE new row for that period.
+     c) After 2 minutes a scan asks once more.
+   (Do not run this test on 794910372326: it now has its label.)
+
+4) Optional: test that a failing request is retried and does not stay stuck.
+   Unplug the PC from the network (or put a wrong host in the web service address in Settings) for about a minute, scan an
+   unknown barcode, then restore the connection. The message log shows one "ERROR: Web sync: Cannot reach the web service"
+   line, and after the connection is back the request is sent within about 5 minutes ("Label requested" or
+   "Logiwa has no order for"). Check:
+     SELECT RequestId, OrderNumber, Status, Attempts, NextAttemptAt, LastError FROM dbo.LabelRequest ORDER BY RequestId DESC;

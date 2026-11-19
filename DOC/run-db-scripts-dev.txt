@@ -1,0 +1,20 @@
+CMC_Logiwa DEV database: run these three scripts, in this order
+================================================================
+Server: TAREK-ZAKI\TAREKSMART2025   Run as an admin (sysadmin) in SSMS.
+Folder: C:\Users\tarek\Desktop\Logiwa-CMC\CMC_Logiwa\db\
+
+1) 001_schema_dev.sql          creates the database Local_CMC_Logiwa_DEV and its tables
+2) 000_create_app_login_dev.sql creates the login CMC_Logiwa_app_dev
+                                BEFORE running: open it and replace CHANGE_ME_BEFORE_RUNNING (line 15) with your own password.
+                                Do NOT commit the edited file; undo the edit after running.
+                                The script stops with an error if you forgot to change it.
+3) 002_procs_dev.sql           creates the stored procedures
+
+Command line alternative (note the -I, it is required):
+sqlcmd -S "TAREK-ZAKI\TAREKSMART2025" -E -I -b -i "C:\Users\tarek\Desktop\Logiwa-CMC\CMC_Logiwa\db\001_schema_dev.sql"
+sqlcmd -S "TAREK-ZAKI\TAREKSMART2025" -E -I -b -i "C:\Users\tarek\Desktop\Logiwa-CMC\CMC_Logiwa\db\000_create_app_login_dev.sql"
+sqlcmd -S "TAREK-ZAKI\TAREKSMART2025" -E -I -b -i "C:\Users\tarek\Desktop\Logiwa-CMC\CMC_Logiwa\db\002_procs_dev.sql"
+
+The scripts are safe to re-run. Nothing touches the V1 database (CMC).
+SQL logins need the instance in "SQL Server and Windows Authentication" mode; if the login cannot connect afterwards, check that setting.
+Tell me when this is done and which option you chose for the database password (first-run settings screen or App.config).

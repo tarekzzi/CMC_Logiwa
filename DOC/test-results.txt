@@ -1,0 +1,75 @@
+CMC_Logiwa test results, exported 2026-11-13 15:43:35 from CMC_CONTROL\CMC_CONTROL / Local_CMC_Logiwa_DEV
+
+=== PackJob (all rows, label text left out) (7 rows)
+
+PackJobID OrderNumber  OrderStatus PackID MachineId ProcessedByUser  Created               Started               Completed             BoxEventID
+--------- -----------  ----------- ------ --------- ---------------  -------               -------               ---------             ----------
+        1 1JDQ12002728 Completed   1      002       tarek@dts.com.au 13/11/2026 2:46:05 PM 13/11/2026 3:02:28 PM 13/11/2026 3:03:03 PM 000       
+        2 1JDQ12002727 Completed   6      002       tarek@dts.com.au 13/11/2026 2:46:05 PM 13/11/2026 3:03:29 PM 13/11/2026 3:04:05 PM 000       
+        3 TESTNOLABEL1 NoLabel                                       13/11/2026 2:46:05 PM                                                       
+        4 1JDQ12002728 Removed     22     002       tarek@dts.com.au 13/11/2026 3:11:52 PM 13/11/2026 3:14:56 PM 13/11/2026 3:17:54 PM           
+        5 1JDQ12002727 Completed   16     002       tarek@dts.com.au 13/11/2026 3:11:59 PM 13/11/2026 3:12:52 PM 13/11/2026 3:13:29 PM 000       
+        6 1JDQ12002728 Completed   27     002       tarek@dts.com.au 13/11/2026 3:16:49 PM 13/11/2026 3:17:25 PM 13/11/2026 3:18:01 PM 000       
+        7 1JDQ12002727 Completed   30     002       tarek@dts.com.au 13/11/2026 3:16:56 PM 13/11/2026 3:17:35 PM 13/11/2026 3:18:11 PM 000
+
+=== PackJobEvent (history, newest last) (41 rows)
+
+EventId EventAt               PackJobID OrderNumber  EventType MachineId UserName         Detail                              
+------- -------               --------- -----------  --------- --------- --------         ------                              
+      1 13/11/2026 3:02:27 PM         1 1JDQ12002728 Scan      002       tarek@dts.com.au ENQ ok, counter 1                   
+      2 13/11/2026 3:02:32 PM         1 1JDQ12002728 ACK       002                        ACK ok                              
+      3 13/11/2026 3:02:32 PM         1 1JDQ12002728 PRN       002                        Print ok                            
+      4 13/11/2026 3:02:56 PM         1 1JDQ12002728 LAB       002                        Label ok: GOOD PRODUCT              
+      5 13/11/2026 3:03:03 PM         1 1JDQ12002728 END       002                        End ok: GOOD PRODUCT                
+      6 13/11/2026 3:03:28 PM         2 1JDQ12002727 Scan      002       tarek@dts.com.au ENQ ok, counter 6                   
+      7 13/11/2026 3:03:34 PM         2 1JDQ12002727 ACK       002                        ACK ok                              
+      8 13/11/2026 3:03:34 PM         2 1JDQ12002727 PRN       002                        Print ok                            
+      9 13/11/2026 3:03:57 PM         2 1JDQ12002727 LAB       002                        Label ok: GOOD PRODUCT              
+     10 13/11/2026 3:04:04 PM         2 1JDQ12002727 END       002                        End ok: GOOD PRODUCT                
+     11 13/11/2026 3:04:25 PM         3 TESTNOLABEL1 NoLabel   002       tarek@dts.com.au Scan without label                  
+     12 13/11/2026 3:04:30 PM         2 1JDQ12002727 Duplicate 002       tarek@dts.com.au Already processed, status Completed 
+     13 13/11/2026 3:10:14 PM         3 TESTNOLABEL1 NoLabel   002       tarek@dts.com.au Scan without label                  
+     14 13/11/2026 3:10:22 PM         2 1JDQ12002727 Duplicate 002       tarek@dts.com.au Already processed, status Completed 
+     15 13/11/2026 3:11:18 PM         1 1JDQ12002728 Duplicate 002       tarek@dts.com.au Already processed, status Completed 
+     16 13/11/2026 3:11:51 PM         4 1JDQ12002728 Reset               tarek@dts.com.au Reset from PackJobID 1              
+     17 13/11/2026 3:11:58 PM         5 1JDQ12002727 Reset               tarek@dts.com.au Reset from PackJobID 2              
+     18 13/11/2026 3:12:51 PM         5 1JDQ12002727 Scan      002       tarek@dts.com.au ENQ ok, counter 16                  
+     19 13/11/2026 3:12:58 PM         5 1JDQ12002727 ACK       002                        ACK ok                              
+     20 13/11/2026 3:12:58 PM         5 1JDQ12002727 PRN       002                        Print ok                            
+     21 13/11/2026 3:13:21 PM         5 1JDQ12002727 LAB       002                        Label ok: GOOD PRODUCT              
+     22 13/11/2026 3:13:28 PM         5 1JDQ12002727 END       002                        End ok: GOOD PRODUCT                
+     23 13/11/2026 3:13:51 PM         5 1JDQ12002727 Duplicate 002       tarek@dts.com.au Already processed, status Completed 
+     24 13/11/2026 3:14:55 PM         4 1JDQ12002728 Scan      002       tarek@dts.com.au ENQ ok, counter 22                  
+     25 13/11/2026 3:15:10 PM         4 1JDQ12002728 ACK       002                        ACK ok                              
+     26 13/11/2026 3:15:10 PM         4 1JDQ12002728 PRN       002                        Print ok                            
+     27 13/11/2026 3:16:04 PM         4 1JDQ12002728 Duplicate 002       tarek@dts.com.au Already processed, status InProgress
+     28 13/11/2026 3:16:08 PM         5 1JDQ12002727 Duplicate 002       tarek@dts.com.au Already processed, status Completed 
+     29 13/11/2026 3:16:49 PM         6 1JDQ12002728 Reset               tarek@dts.com.au Reset from PackJobID 4              
+     30 13/11/2026 3:16:56 PM         7 1JDQ12002727 Reset               tarek@dts.com.au Reset from PackJobID 5              
+     31 13/11/2026 3:17:25 PM         6 1JDQ12002728 Scan      002       tarek@dts.com.au ENQ ok, counter 27                  
+     32 13/11/2026 3:17:31 PM         6 1JDQ12002728 ACK       002                        ACK ok                              
+     33 13/11/2026 3:17:31 PM         6 1JDQ12002728 PRN       002                        Print ok                            
+     34 13/11/2026 3:17:35 PM         7 1JDQ12002727 Scan      002       tarek@dts.com.au ENQ ok, counter 30                  
+     35 13/11/2026 3:17:41 PM         7 1JDQ12002727 ACK       002                        ACK ok                              
+     36 13/11/2026 3:17:41 PM         7 1JDQ12002727 PRN       002                        Print ok                            
+     37 13/11/2026 3:17:54 PM         4 1JDQ12002728 REM       002                        Carton removed                      
+     38 13/11/2026 3:17:54 PM         6 1JDQ12002728 LAB       002                        Label ok: GOOD PRODUCT              
+     39 13/11/2026 3:18:01 PM         6 1JDQ12002728 END       002                        End ok: GOOD PRODUCT                
+     40 13/11/2026 3:18:04 PM         7 1JDQ12002727 LAB       002                        Label ok: GOOD PRODUCT              
+     41 13/11/2026 3:18:11 PM         7 1JDQ12002727 END       002                        End ok: GOOD PRODUCT
+
+=== LabelRequest (0 rows)
+(none)
+
+=== Outbox (results waiting to be sent) (5 rows)
+
+PackJobID TrackingNumber MachineId CompletedAt           BoxWeightG LengthMm WidthMm HeightMm
+--------- -------------- --------- -----------           ---------- -------- ------- --------
+        1 1JDQ12002728   002       13/11/2026 3:03:03 PM        135      202     250       55
+        2 1JDQ12002727   002       13/11/2026 3:04:05 PM        295      259     296       75
+        5 1JDQ12002727   002       13/11/2026 3:13:29 PM        265      257     310       70
+        6 1JDQ12002728   002       13/11/2026 3:18:01 PM        280      277     280       75
+        7 1JDQ12002727   002       13/11/2026 3:18:11 PM        265      257     296       70
+
+=== Users (names only) (0 rows)
+(none)

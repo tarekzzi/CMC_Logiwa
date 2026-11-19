@@ -1,0 +1,25 @@
+CMC_Logiwa update 2 (on the CMC / packing PC)
+=============================================
+What changes:
+ - New "Settings" button in the main window (database + web service address and API key).
+ - Web sync: orders and labels come from the web VM every 20 s.
+ - A barcode the PC does not know now asks the web VM to look it up in Logiwa by tracking number
+   (recovers an order whose webhook was missed). The first scan still says "Not found, try again later";
+   rescan after about 30 seconds and it is accepted.
+
+1) Database (about 5 seconds). Open PowerShell in this update-2 folder and paste ONE line:
+     & ([scriptblock]::Create(((Get-Content -Raw .\run-sql-file.ps1) -replace 'Split-Path.*Path','(Get-Location).Path')))
+   Server: press Enter for CMC_CONTROL\CMC_CONTROL, then W (Windows) or S (SQL login) for an admin login.
+   It runs update-2-label-recovery.sql. At the end: "Done. ... steps ran without errors."
+   Nothing is deleted. NOTE: if you already ran db\002_procs_dev.sql today, the procedures are already updated.
+
+2) App. Close CMC_Logiwa. Unzip CMC_Logiwa_app.zip over the old folder (replace the files) and start CMC_Logiwa.exe.
+   Check the file first:  Get-FileHash .\CMC_Logiwa_app.zip -Algorithm SHA256
+   must be      4F0AE686104FF499A2248B1D99022BB0B29CEACFD46663B7BF710983380AB7FA
+   Your database settings and users are kept. Use Settings to enter the web service address and API key.
+
+3) Test the recovery (needs the new web VM build deployed, see DOC\cmc-label-path-test-dev.txt part 8):
+   Scan the tracking number of a real Logiwa order that the web VM never received.
+   Message log: "Not found" in red, then within about 20 s "INFO: Label requested for <tracking>".
+   After the next sync line ("Web sync: 1 order(s) received") scan again: accepted.
+   A tracking number Logiwa does not know: "INFO: Logiwa has no order for <tracking>."

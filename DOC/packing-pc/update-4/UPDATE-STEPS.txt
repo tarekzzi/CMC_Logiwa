@@ -1,0 +1,27 @@
+CMC_Logiwa update 4 (on the CMC / packing PC)
+=============================================
+What changes:
+ - The packing PC now sends the measured weight and size of every finished carton to the web VM (new "Result sent for ..." line
+   in the message log). The web VM writes it to the Logiwa license plate. Until now the PC only stored them.
+ - A result that cannot be sent is retried (10 s, 20 s ... up to 5 minutes, never gives up) and does not hold back anything else.
+ - Includes everything from update 3 (failing label requests no longer block the others).
+ - A network timeout while talking to the web VM no longer stops the sync loop for good (it was treated like "the app is closing").
+ Needs update 2 installed. The web VM must have the result push first: see DOC\result-push-test-dev.txt part 1.
+
+1) Database: nothing new for update 4 itself. If update 3 was NOT installed yet, run its database script first
+   (DOC\packing-pc\update-3\update-3-throttle.sql with run-sql-file.ps1, see update-3\UPDATE-STEPS.txt step 1).
+
+2) BEFORE installing the app look for old results that would be sent now (anything finished with PushStatus Pending):
+     SELECT PackJobID, OrderNumber, OrderStatus, PushStatus, WeightScale, BoxSizeL, BoxSizeW, BoxSizeH FROM dbo.PackJob WHERE PushStatus = N'Pending';
+   Rows from earlier tests that must not reach Logiwa:
+     UPDATE dbo.PackJob SET PushStatus = N'None' WHERE PackJobID IN (...);
+
+3) App. Close CMC_Logiwa. Unzip CMC_Logiwa_app.zip over the old folder (replace the files) and start CMC_Logiwa.exe.
+   Check the file first:  Get-FileHash .\CMC_Logiwa_app.zip -Algorithm SHA256
+   must be      C98EC472A34520350AD9AFD7C06EE429C1FCAF5017EDCB0639787D90756E6D2C
+   Your database settings, users and the web service address / API key are kept.
+
+4) Test: run a carton through the machine to END. Message log within about 20 s:
+     INFO: Result sent for <tracking>: <weight> g, <L> x <W> x <H> mm.
+   SELECT PackJobID, OrderNumber, OrderStatus, PushStatus, PushAttempts, PushLastError FROM dbo.PackJob WHERE OrderNumber = '<tracking>';
+   -> PushStatus Sent. Then follow DOC\result-push-test-dev.txt part 2.2 to 2.4 on the web VM and in Logiwa.

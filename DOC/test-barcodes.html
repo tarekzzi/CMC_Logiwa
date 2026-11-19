@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CMC_Logiwa test barcodes</title>
+<style>
+  body { font-family: Segoe UI, Arial, sans-serif; margin: 24px; color: #0f172a; background: #fff; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .muted { color: #5b6475; font-size: 14px; }
+  .card { border: 1px solid #c3c9d4; border-radius: 10px; padding: 16px 20px; margin: 18px 0; max-width: 560px; page-break-inside: avoid; }
+  .card h2 { font-size: 16px; margin: 0 0 2px; }
+  .expect { font-size: 14px; margin: 0 0 8px; }
+  svg { display: block; width: 100%; max-width: 520px; height: auto; }
+  select { font-size: 14px; padding: 4px; }
+  @media print { .noprint { display: none; } }
+</style>
+</head>
+<body>
+<h1>CMC_Logiwa test barcodes</h1>
+<p class="muted">Print this page (or show it on screen) and scan each barcode with the CMC scanner. Test cartons in Local_CMC_Logiwa_DEV.</p>
+<p class="noprint">Barcode type:
+  <select id="type">
+    <option value="CODE128" selected>Code 128</option>
+    <option value="CODE39">Code 39</option>
+  </select>
+  <span class="muted">(change it if the scanner does not read the first one)</span>
+</p>
+<p id="err" class="muted" style="color:#b91c1c"></p>
+
+<div class="card">
+  <h2>1. Good carton</h2>
+  <p class="expect">Scan once: accepted, label printed, goes through the machine. Scan it again afterwards: should say <b>Duplicate</b>.</p>
+  <svg class="bc" data-value="1JDQ12002728"></svg>
+</div>
+
+<div class="card">
+  <h2>2. Second good carton</h2>
+  <p class="expect">Same as 1 (use it to test a failure, e.g. a wrong size or a removed carton).</p>
+  <svg class="bc" data-value="1JDQ12002727"></svg>
+</div>
+
+<div class="card">
+  <h2>3. Order without a label</h2>
+  <p class="expect">Should say <b>No label, try again later</b>.</p>
+  <svg class="bc" data-value="TESTNOLABEL1"></svg>
+</div>
+
+<div class="card">
+  <h2>4. Unknown barcode</h2>
+  <p class="expect">Should say <b>Not found, try again later</b>.</p>
+  <svg class="bc" data-value="NOSUCH99999"></svg>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
+<script>
+  function draw() {
+    var type = document.getElementById('type').value;
+    var err = document.getElementById('err');
+    err.textContent = '';
+    if (typeof JsBarcode === 'undefined') {
+      err.textContent = 'The barcode library could not be loaded (no internet?). Open this page on a PC with internet access.';
+      return;
+    }
+    document.querySelectorAll('svg.bc').forEach(function (el) {
+      try {
+        JsBarcode(el, el.getAttribute('data-value'), { format: type, width: 3, height: 90, displayValue: true, fontSize: 20, margin: 10 });
+      } catch (e) {
+        err.textContent = 'Could not draw ' + el.getAttribute('data-value') + ' as ' + type + ': ' + e.message;
+      }
+    });
+  }
+  document.getElementById('type').addEventListener('change', draw);
+  draw();
+</script>
+</body>
+</html>

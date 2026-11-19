@@ -1,0 +1,18 @@
+CMC_Logiwa update 1 (on the CMC / packing PC)
+=============================================
+What changes: a carton removed from the machine (including a forced reject at the machine) now stores the machine event
+"010 Box Removed" on its record, and the front panel names the carton by its tracking number.
+
+1) Database (about 5 seconds). Copy this whole update-1 folder to the CMC PC. Open PowerShell in it and paste ONE line:
+     & ([scriptblock]::Create(((Get-Content -Raw .\run-sql-file.ps1) -replace 'Split-Path.*Path','(Get-Location).Path')))
+   Server: press Enter for CMC_CONTROL\CMC_CONTROL, then W (Windows) or S (SQL login) for an admin login.
+   It runs update-1-machine-procs.sql. At the end it should say: "Done. ... steps ran without errors."
+   Nothing is deleted; your test cartons and history stay as they are.
+
+2) App. Close CMC_Logiwa on the CMC PC. Unzip CMC_Logiwa_app.zip over the old folder (replace the files) and start CMC_Logiwa.exe again.
+   Your database settings and users are kept.
+
+3) Test: scan a carton, let it get past the print, then reject / remove it at the machine.
+   The front panel should show:   <tracking number>: carton removed from the machine (Box Removed, 010)
+   and the carton record should show BoxEventID 010 and BoxEventText "Box Removed".
+   Then run export-test-results.ps1 again (use the NEW copy from the packing-pc folder, it prints every column) and send test-results.txt.
