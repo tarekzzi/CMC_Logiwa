@@ -176,7 +176,9 @@ namespace CMC_Logiwa.Services
             {
                 { "@PackJobID", packJobId },
                 { "@LogiwaStatus", answer.Status },
-                { "@Shipped", answer.Closed }
+                { "@Shipped", answer.Closed },
+                { "@Hold", answer.Hold },
+                { "@Cancelled", answer.Cancelled }
             });
             return dt.Rows.Count == 0 ? "" : dt.Rows[0]["Result"].ToString();
         }

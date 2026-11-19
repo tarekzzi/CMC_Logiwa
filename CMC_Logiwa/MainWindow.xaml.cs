@@ -87,7 +87,18 @@ namespace CMC_Logiwa
                 DateTime startedAt = DateTime.Now;     // orders stored before now are "past" orders for the Logiwa check
                 await LoadMachineSettingsAsync();   // before the sync starts: it uses the machine ID
                 StartWebSync();
-                _ = Task.Run(() => RunShippedCheckAsync(startedAt));   // background: the machine can work while Logiwa is asked
+                // Background: the machine can work while Logiwa is asked. Runs at start-up, then once a day as a safety net for any
+                // status webhook that was missed (the webhooks themselves arrive through the web sync within seconds).
+                _ = Task.Run(async () =>
+                {
+                    DateTime from = startedAt;
+                    while (true)
+                    {
+                        await RunShippedCheckAsync(from).ConfigureAwait(false);
+                        await Task.Delay(TimeSpan.FromHours(24)).ConfigureAwait(false);
+                        from = DateTime.Now;
+                    }
+                });
 
                 // The warehouse is required: ask for it right away instead of leaving the app half working.
                 if (!_hasWarehouse)
@@ -119,6 +130,7 @@ namespace CMC_Logiwa
             _sync = new OrderSyncService(txtMachineId.Text.Trim());
             _sync.OnLog += AppendLog;
             _sync.OnStatus += s => Dispatcher.BeginInvoke(new Action(() => ShowSyncStatus(s)));
+            _sync.StatusChanged += () => Dispatcher.BeginInvoke(new Action(async () => await overview.RefreshAsync()));
             _sync.Start();
         }
 

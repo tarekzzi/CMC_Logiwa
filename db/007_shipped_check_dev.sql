@@ -23,11 +23,11 @@ GO
 
 -- allow the new status
 IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_PackJob_Status' AND parent_object_id = OBJECT_ID(N'dbo.PackJob')
-           AND definition NOT LIKE N'%Shipped%')
+           AND definition NOT LIKE N'%Cancelled%')
 BEGIN
     ALTER TABLE dbo.PackJob DROP CONSTRAINT CK_PackJob_Status;
     ALTER TABLE dbo.PackJob WITH CHECK ADD CONSTRAINT CK_PackJob_Status
-        CHECK (OrderStatus IN (N'NoLabel', N'Ready', N'InProgress', N'Completed', N'Failed', N'Removed', N'Shipped'));
+        CHECK (OrderStatus IN (N'NoLabel', N'Ready', N'InProgress', N'Completed', N'Failed', N'Removed', N'Shipped', N'OnHold', N'Cancelled'));
 END
 GO
 
@@ -43,7 +43,7 @@ BEGIN
     SET NOCOUNT ON;
     SELECT TOP (@Max) PackJobID, OrderNumber AS TrackingNumber, ShipmentIdentifier
     FROM dbo.PackJob
-    WHERE IsCurrent = 1 AND OrderStatus IN (N'Ready', N'NoLabel')
+    WHERE IsCurrent = 1 AND OrderStatus IN (N'Ready', N'NoLabel', N'OnHold')
       AND NULLIF(LTRIM(RTRIM(ShipmentIdentifier)), N'') IS NOT NULL
       AND JobCreatedDateTime < @StoredBefore
       AND (@BeforeId IS NULL OR PackJobID < @BeforeId)
@@ -58,7 +58,9 @@ GO
 CREATE OR ALTER PROCEDURE dbo.sp_Shipped_Apply
     @PackJobID    int,
     @LogiwaStatus nvarchar(40),
-    @Shipped      bit
+    @Shipped      bit,
+    @Hold         bit = 0,
+    @Cancelled    bit = 0
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -80,9 +82,9 @@ BEGIN
 
     -- The machine can scan this order at any moment (the check runs in the background): the status is changed only if it is
     -- still Ready / NoLabel in this very statement, so an order that was just claimed (InProgress) is never touched.
-    IF @Shipped = 1 AND @status IN (N'Ready', N'NoLabel')
+    IF @Shipped = 1 AND @status IN (N'Ready', N'NoLabel', N'OnHold')
     BEGIN
-        UPDATE dbo.PackJob SET OrderStatus = N'Shipped' WHERE PackJobID = @PackJobID AND OrderStatus IN (N'Ready', N'NoLabel');
+        UPDATE dbo.PackJob SET OrderStatus = CASE WHEN @Cancelled = 1 THEN N'Cancelled' ELSE N'Shipped' END WHERE PackJobID = @PackJobID AND OrderStatus IN (N'Ready', N'NoLabel', N'OnHold');
         IF @@ROWCOUNT = 0
         BEGIN
             COMMIT;
@@ -93,18 +95,36 @@ BEGIN
         UPDATE dbo.LabelRequest SET Status = N'Done' WHERE OrderNumber = @order AND Status IN (N'Pending', N'Sent');
 
         INSERT dbo.PackJobEvent(PackJobID, OrderNumber, EventType, Detail)
-        VALUES (@PackJobID, @order, N'Shipped', LEFT(N'Finished in Logiwa (status ' + ISNULL(@LogiwaStatus, N'?') + N'), will not be offered to the machine', 400));
+        VALUES (@PackJobID, @order, CASE WHEN @Cancelled = 1 THEN N'Cancelled' ELSE N'Shipped' END, LEFT(N'Finished in Logiwa (status ' + ISNULL(@LogiwaStatus, N'?') + N'), will not be offered to the machine', 400));
 
         COMMIT;
         SELECT N'MARKED' AS Result;
         RETURN;
     END
 
-    IF @Shipped = 0 AND @status = N'Shipped'
+    IF @Shipped = 0 AND @Hold = 1 AND @status IN (N'Ready', N'NoLabel')
+    BEGIN
+        UPDATE dbo.PackJob SET OrderStatus = N'OnHold' WHERE PackJobID = @PackJobID AND OrderStatus IN (N'Ready', N'NoLabel');
+        IF @@ROWCOUNT = 0
+        BEGIN
+            COMMIT;
+            SELECT N'NOCHANGE' AS Result;
+            RETURN;
+        END
+
+        INSERT dbo.PackJobEvent(PackJobID, OrderNumber, EventType, Detail)
+        VALUES (@PackJobID, @order, N'OnHold', LEFT(N'On hold in Logiwa (status ' + ISNULL(@LogiwaStatus, N'?') + N'), will not be offered to the machine', 400));
+
+        COMMIT;
+        SELECT N'HELD' AS Result;
+        RETURN;
+    END
+
+    IF @Shipped = 0 AND @Hold = 0 AND @status IN (N'Shipped', N'OnHold', N'Cancelled')
     BEGIN
         UPDATE dbo.PackJob
         SET OrderStatus = CASE WHEN NULLIF(@label, N'') IS NULL THEN N'NoLabel' ELSE N'Ready' END
-        WHERE PackJobID = @PackJobID AND OrderStatus = N'Shipped';
+        WHERE PackJobID = @PackJobID AND OrderStatus IN (N'Shipped', N'OnHold', N'Cancelled');
 
         INSERT dbo.PackJobEvent(PackJobID, OrderNumber, EventType, Detail)
         VALUES (@PackJobID, @order, N'Unshipped', LEFT(N'Logiwa status is now ' + ISNULL(@LogiwaStatus, N'?') + N', offered to the machine again', 400));
@@ -116,6 +136,189 @@ BEGIN
 
     COMMIT;
     SELECT N'NOCHANGE' AS Result;
+END
+GO
+
+/* ---- Webhook status changes (Shipped / Cancelled / OnHold / back to ReadyToShip) --------------------------------------
+   The app polls the web VM for status changes after the last StatusSeq it handled. SyncState.LastStatusSeq is that cursor. */
+IF COL_LENGTH(N'dbo.SyncState', N'LastStatusSeq') IS NULL
+    ALTER TABLE dbo.SyncState ADD LastStatusSeq bigint NOT NULL CONSTRAINT DF_SyncState_StatusSeq DEFAULT (0);
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sp_Status_GetCursor
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT LastStatusSeq FROM dbo.SyncState WHERE Id = 1;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sp_Status_SetCursor
+    @MaxSeq bigint
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE dbo.SyncState SET LastStatusSeq = @MaxSeq WHERE Id = 1 AND LastStatusSeq < @MaxSeq;
+END
+GO
+
+/* Applies one webhook status change to every current record of the shipment (one shipment can have several tracking numbers).
+   @Kind = closed -> Ready / NoLabel / OnHold become Shipped; cancelled -> the same but Cancelled (also from Shipped); hold -> Ready / NoLabel become OnHold;
+   open -> Shipped / OnHold go back to Ready (NoLabel without a label). Records being packed (InProgress ...) are never touched.
+   Returns Marked, Held, Released counts. */
+CREATE OR ALTER PROCEDURE dbo.sp_Status_Apply
+    @ShipmentIdentifier nvarchar(50),
+    @LogiwaStatus       nvarchar(40),
+    @Kind               nvarchar(10)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    DECLARE @ids TABLE(PackJobID int PRIMARY KEY, OrderNumber nvarchar(50), Old nvarchar(20));
+    DECLARE @marked int = 0, @held int = 0, @released int = 0;
+
+    BEGIN TRAN;
+
+    UPDATE dbo.PackJob SET LogiwaStatus = LEFT(@LogiwaStatus, 40), LogiwaCheckedAt = SYSDATETIME()
+    WHERE ShipmentIdentifier = @ShipmentIdentifier AND IsCurrent = 1;
+
+    IF @Kind IN (N'closed', N'cancelled')
+    BEGIN
+        DECLARE @target nvarchar(20) = CASE WHEN @Kind = N'cancelled' THEN N'Cancelled' ELSE N'Shipped' END;
+
+        -- a shipped order that Logiwa then cancels becomes Cancelled; nothing else moves between the two
+        UPDATE dbo.PackJob SET OrderStatus = @target
+        OUTPUT inserted.PackJobID, inserted.OrderNumber, deleted.OrderStatus INTO @ids
+        WHERE ShipmentIdentifier = @ShipmentIdentifier AND IsCurrent = 1
+          AND (OrderStatus IN (N'Ready', N'NoLabel', N'OnHold') OR (@target = N'Cancelled' AND OrderStatus = N'Shipped'));
+        SET @marked = @@ROWCOUNT;
+
+        UPDATE lr SET Status = N'Done' FROM dbo.LabelRequest lr
+        JOIN @ids i ON i.OrderNumber = lr.OrderNumber WHERE lr.Status IN (N'Pending', N'Sent');
+
+        INSERT dbo.PackJobEvent(PackJobID, OrderNumber, EventType, Detail)
+        SELECT PackJobID, OrderNumber, @target,
+               LEFT(N'Logiwa status ' + ISNULL(@LogiwaStatus, N'?') + N' (webhook), will not be offered to the machine', 400) FROM @ids;
+    END
+    ELSE IF @Kind = N'hold'
+    BEGIN
+        UPDATE dbo.PackJob SET OrderStatus = N'OnHold'
+        OUTPUT inserted.PackJobID, inserted.OrderNumber, deleted.OrderStatus INTO @ids
+        WHERE ShipmentIdentifier = @ShipmentIdentifier AND IsCurrent = 1 AND OrderStatus IN (N'Ready', N'NoLabel');
+        SET @held = @@ROWCOUNT;
+
+        INSERT dbo.PackJobEvent(PackJobID, OrderNumber, EventType, Detail)
+        SELECT PackJobID, OrderNumber, N'OnHold',
+               LEFT(N'Logiwa status ' + ISNULL(@LogiwaStatus, N'?') + N' (webhook), will not be offered to the machine', 400) FROM @ids;
+    END
+    ELSE IF @Kind = N'open'
+    BEGIN
+        UPDATE dbo.PackJob
+        SET OrderStatus = CASE WHEN NULLIF(LabelData, N'') IS NULL THEN N'NoLabel' ELSE N'Ready' END
+        OUTPUT inserted.PackJobID, inserted.OrderNumber, deleted.OrderStatus INTO @ids
+        WHERE ShipmentIdentifier = @ShipmentIdentifier AND IsCurrent = 1 AND OrderStatus IN (N'Shipped', N'OnHold', N'Cancelled');
+        SET @released = @@ROWCOUNT;
+
+        INSERT dbo.PackJobEvent(PackJobID, OrderNumber, EventType, Detail)
+        SELECT PackJobID, OrderNumber, N'Unshipped',
+               LEFT(N'Logiwa status is now ' + ISNULL(@LogiwaStatus, N'?') + N' (webhook), offered to the machine again', 400) FROM @ids;
+    END
+
+    COMMIT;
+    SELECT @marked AS Marked, @held AS Held, @released AS Released;
+END
+GO
+
+/* sp_Sync_UpsertOrders: the 002 version plus the Logiwa status. The web VM lists an order that is shipped, cancelled or on hold
+   WITHOUT its label (kind = closed / cancelled / hold): it is stored as a small record with status Shipped / OnHold, so an order whose
+   status changed before this PC downloaded it is still known, shown and never offered to the machine. When the order is
+   released the label arrives later and fills the record (sp_Status_Apply then makes it Ready). */
+CREATE OR ALTER PROCEDURE dbo.sp_Sync_UpsertOrders
+    @Json   nvarchar(max),
+    @MaxSeq bigint
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    DECLARE @in TABLE(
+        TrackingNumber     nvarchar(50)  NOT NULL PRIMARY KEY,
+        SyncSeq            bigint        NOT NULL,
+        ShipmentIdentifier nvarchar(64)  NULL,
+        OrderCode          nvarchar(100) NULL,
+        ClientCode         nvarchar(50)  NULL,
+        LabelZpl           nvarchar(max) NULL,
+        LogiwaStatus       nvarchar(40)  NULL,
+        Kind               nvarchar(10)  NULL
+    );
+
+    INSERT @in(TrackingNumber, SyncSeq, ShipmentIdentifier, OrderCode, ClientCode, LabelZpl, LogiwaStatus, Kind)
+    SELECT TrackingNumber, SyncSeq, ShipmentIdentifier, OrderCode, ClientCode, NULLIF(LabelZpl, N''), LogiwaStatus, Kind
+    FROM (
+        SELECT j.TrackingNumber, j.SyncSeq, j.ShipmentIdentifier, j.OrderCode, j.ClientCode, j.LabelZpl, j.LogiwaStatus, j.Kind,
+               ROW_NUMBER() OVER (PARTITION BY j.TrackingNumber ORDER BY j.SyncSeq DESC) AS rn
+        FROM OPENJSON(@Json) WITH (
+            SyncSeq            bigint        '$.syncSeq',
+            TrackingNumber     nvarchar(50)  '$.trackingNumber',
+            ShipmentIdentifier nvarchar(64)  '$.shipmentIdentifier',
+            OrderCode          nvarchar(100) '$.orderCode',
+            ClientCode         nvarchar(50)  '$.clientCode',
+            LabelZpl           nvarchar(max) '$.labelZpl',
+            LogiwaStatus       nvarchar(40)  '$.logiwaStatus',
+            Kind               nvarchar(10)  '$.kind'
+        ) AS j
+        WHERE NULLIF(LTRIM(RTRIM(j.TrackingNumber)), N'') IS NOT NULL
+    ) AS x
+    WHERE rn = 1;
+
+    DECLARE @updated int = 0, @inserted int = 0;
+
+    BEGIN TRAN;
+
+    -- existing current rows: refresh identifiers; a label may only be replaced while the carton is not being processed
+    UPDATE p SET
+        ShipmentIdentifier = COALESCE(i.ShipmentIdentifier, p.ShipmentIdentifier),
+        OrderCode          = COALESCE(i.OrderCode, p.OrderCode),
+        ClientCode         = COALESCE(i.ClientCode, p.ClientCode),
+        SyncSeq            = i.SyncSeq,
+        LabelData    = CASE WHEN p.OrderStatus IN (N'NoLabel', N'Ready', N'OnHold', N'Shipped', N'Cancelled') AND i.LabelZpl IS NOT NULL THEN i.LabelZpl ELSE p.LabelData END,
+        LabelDataLen = CASE WHEN p.OrderStatus IN (N'NoLabel', N'Ready', N'OnHold', N'Shipped', N'Cancelled') AND i.LabelZpl IS NOT NULL THEN LEN(i.LabelZpl) ELSE p.LabelDataLen END,
+        OrderStatus  = CASE WHEN p.OrderStatus = N'NoLabel' AND i.LabelZpl IS NOT NULL THEN N'Ready' ELSE p.OrderStatus END
+    FROM dbo.PackJob p
+    JOIN @in i ON i.TrackingNumber = p.OrderNumber
+    WHERE p.IsCurrent = 1;
+    SET @updated = @@ROWCOUNT;
+
+    -- new orders (never seen locally, not archived); closed / hold ones come without a label and start as Shipped / OnHold
+    INSERT dbo.PackJob(JobNumber, OrderNumber, MatchLab, ShipmentIdentifier, OrderCode, ClientCode,
+                       LabelData, LabelDataLen, OrderStatus, SyncSeq, IsCurrent, LogiwaStatus, LogiwaCheckedAt)
+    SELECT i.TrackingNumber, i.TrackingNumber, i.TrackingNumber, i.ShipmentIdentifier, i.OrderCode, i.ClientCode,
+           i.LabelZpl, LEN(i.LabelZpl),
+           CASE WHEN i.Kind = N'cancelled' THEN N'Cancelled'
+                WHEN i.Kind = N'closed' THEN N'Shipped'
+                WHEN i.Kind = N'hold'   THEN N'OnHold'
+                WHEN i.LabelZpl IS NULL THEN N'NoLabel' ELSE N'Ready' END,
+           i.SyncSeq, 1, i.LogiwaStatus, CASE WHEN i.LogiwaStatus IS NULL THEN NULL ELSE SYSDATETIME() END
+    FROM @in i
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.PackJob p WHERE p.OrderNumber = i.TrackingNumber)
+      AND NOT EXISTS (SELECT 1 FROM dbo.PackJobArchive a WHERE a.OrderNumber = i.TrackingNumber);
+    SET @inserted = @@ROWCOUNT;
+
+    -- label arrived (or the order is finished / held): close open label requests
+    UPDATE r SET Status = N'Done'
+    FROM dbo.LabelRequest r
+    JOIN dbo.PackJob p ON p.OrderNumber = r.OrderNumber AND p.IsCurrent = 1
+    WHERE r.Status IN (N'Pending', N'Sent') AND p.OrderStatus <> N'NoLabel';
+
+    UPDATE dbo.SyncState
+    SET LastSyncSeq = CASE WHEN @MaxSeq > LastSyncSeq THEN @MaxSeq ELSE LastSyncSeq END,
+        LastPollAt = SYSDATETIME(), LastPollError = NULL
+    WHERE Id = 1;
+
+    COMMIT;
+
+    SELECT @inserted AS Inserted, @updated AS Updated;
 END
 GO
 
@@ -186,6 +389,24 @@ BEGIN
     END
 
     -- SHIPPED CHECK: Logiwa says this order is already finished (shipped, delivered, cancelled, deleted)
+    IF @id IS NOT NULL AND @status = N'OnHold'
+    BEGIN
+        INSERT dbo.PackJobEvent(PackJobID, OrderNumber, EventType, UserName, MachineId, Detail)
+        VALUES (@id, @bc, N'OnHold', @User, @MachineId, N'Scan of an order on hold in Logiwa');
+        SELECT N'ON_HOLD' AS EnqResult, CAST(NULL AS int) AS PackJobID, CAST(NULL AS nvarchar(100)) AS MatchLab,
+               N'On hold in Logiwa' AS Description;
+        RETURN;
+    END
+
+    IF @id IS NOT NULL AND @status = N'Cancelled'
+    BEGIN
+        INSERT dbo.PackJobEvent(PackJobID, OrderNumber, EventType, UserName, MachineId, Detail)
+        VALUES (@id, @bc, N'Cancelled', @User, @MachineId, N'Scan of an order cancelled in Logiwa');
+        SELECT N'CANCELLED' AS EnqResult, CAST(NULL AS int) AS PackJobID, CAST(NULL AS nvarchar(100)) AS MatchLab,
+               N'Cancelled in Logiwa' AS Description;
+        RETURN;
+    END
+
     IF @id IS NOT NULL AND @status = N'Shipped'
     BEGIN
         INSERT dbo.PackJobEvent(PackJobID, OrderNumber, EventType, UserName, MachineId, Detail)
@@ -245,13 +466,13 @@ BEGIN
     END
 
     -- SHIPPED CHECK: an order finished in Logiwa is never processed again
-    IF @fromArchive = 0 AND @status = N'Shipped'
+    IF @fromArchive = 0 AND @status IN (N'Shipped', N'Cancelled')
     BEGIN
         SELECT N'SHIPPED' AS Result, @src AS NewPackJobID;
         RETURN;
     END
 
-    IF @fromArchive = 0 AND @status IN (N'Ready', N'NoLabel')
+    IF @fromArchive = 0 AND @status IN (N'Ready', N'NoLabel', N'OnHold')
     BEGIN
         SELECT N'NOTHING_TO_RESET' AS Result, @src AS NewPackJobID;
         RETURN;

@@ -36,6 +36,8 @@ namespace CMC_Logiwa.Services
         public string State { get; set; }
         public string Status { get; set; }
         public bool Closed { get; set; }
+        public bool Hold { get; set; }
+        public bool Cancelled { get; set; }
     }
 
     public sealed class OutboxResult
@@ -136,6 +138,50 @@ namespace CMC_Logiwa.Services
             }
         }
 
+        /// <summary>One status change announced by Logiwa's webhook. Kind: closed (shipped, cancelled ...), hold or open.</summary>
+        public sealed class StatusChange
+        {
+            public string ShipmentIdentifier { get; set; }
+            public string Status { get; set; }
+            public string Kind { get; set; }
+        }
+
+        public sealed class StatusChangesPage
+        {
+            public List<StatusChange> Changes { get; } = new List<StatusChange>();
+            public long MaxSeq { get; set; }
+            public bool HasMore { get; set; }
+        }
+
+        public async Task<StatusChangesPage> GetOrderChangesAsync(long afterSeq, int limit, string warehouseId, CancellationToken ct)
+        {
+            string url = $"api/cmc/order-changes?afterSeq={afterSeq}&limit={limit}" +
+                         (string.IsNullOrWhiteSpace(warehouseId) ? "" : "&warehouseIdentifier=" + Uri.EscapeDataString(warehouseId));
+            string body = await SendAsync(() => _http.GetAsync(url, ct), "order changes", ct);
+
+            try
+            {
+                var root = JObject.Parse(body);
+                var page = new StatusChangesPage
+                {
+                    MaxSeq = root.Value<long?>("maxSeq") ?? afterSeq,
+                    HasMore = root.Value<bool?>("hasMore") ?? false
+                };
+                foreach (JObject o in (JArray)root["changes"] ?? new JArray())
+                    page.Changes.Add(new StatusChange
+                    {
+                        ShipmentIdentifier = o.Value<string>("shipmentIdentifier"),
+                        Status = o.Value<string>("status"),
+                        Kind = o.Value<string>("kind") ?? "open"
+                    });
+                return page;
+            }
+            catch (Exception ex) when (ex is JsonException || ex is InvalidCastException)
+            {
+                throw new CmcWebException("The web service answered, but not with a status change list.", ex);
+            }
+        }
+
         public async Task<LabelRequestResult> RequestLabelAsync(string trackingNumber, string machineId, DateTime requestedAtLocal, string warehouseId, CancellationToken ct)
         {
             string json = JsonConvert.SerializeObject(new
@@ -225,7 +271,9 @@ namespace CMC_Logiwa.Services
                         ShipmentIdentifier = o.Value<string>("shipmentIdentifier"),
                         State = o.Value<string>("state") ?? "",
                         Status = o.Value<string>("status"),
-                        Closed = o.Value<bool?>("closed") ?? false
+                        Closed = o.Value<bool?>("closed") ?? false,
+                        Hold = o.Value<bool?>("hold") ?? false,
+                        Cancelled = o.Value<bool?>("cancelled") ?? false
                     });
                 return list;
             }

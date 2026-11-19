@@ -121,6 +121,7 @@ namespace CMC_Logiwa.Services
                 if (warehouse != null)
                 {
                     steps.Add(() => SyncOrders(sql, web, warehouse, ct));
+                    steps.Add(() => SyncStatusChanges(sql, web, warehouse, ct));
                     steps.Add(() => SendLabelRequests(sql, web, warehouse, ct));
                 }
                 steps.Add(() => SendResults(sql, web, ct));
@@ -181,6 +182,51 @@ namespace CMC_Logiwa.Services
                 after = page.MaxSeq;
             }
         }
+
+        /// <summary>
+        /// Logiwa's status webhooks (Shipped, Cancelled, OnHold, back to ReadyToShip) reach the packing PC here: the web VM keeps the
+        /// latest status per order and this step applies every change after the cursor (SyncState.LastStatusSeq). The cursor moves
+        /// only after a change was applied, so a database error means the same changes come again.
+        /// </summary>
+        private void SyncStatusChanges(SQLManager sql, CmcWebClient web, string warehouse, CancellationToken ct)
+        {
+            DataTable cursor = sql.ExecuteStoredProcedure("dbo.sp_Status_GetCursor", null);
+            long after = cursor.Rows.Count == 0 ? 0 : Convert.ToInt64(cursor.Rows[0]["LastStatusSeq"]);
+
+            while (true)
+            {
+                ct.ThrowIfCancellationRequested();
+                var page = web.GetOrderChangesAsync(after, PageSize, warehouse, ct).GetAwaiter().GetResult();
+
+                bool changed = false;
+                foreach (var c in page.Changes)
+                {
+                    DataTable r = sql.ExecuteStoredProcedure("dbo.sp_Status_Apply", new Dictionary<string, object>
+                    {
+                        { "@ShipmentIdentifier", c.ShipmentIdentifier },
+                        { "@LogiwaStatus", c.Status },
+                        { "@Kind", c.Kind }
+                    });
+                    if (r.Rows.Count == 0) continue;
+
+                    int marked = Convert.ToInt32(r.Rows[0]["Marked"]), held = Convert.ToInt32(r.Rows[0]["Held"]), released = Convert.ToInt32(r.Rows[0]["Released"]);
+                    if (marked > 0) OnLog?.Invoke($"INFO: Logiwa status {c.Status}: {marked} order(s) will not be offered to the machine.");
+                    if (held > 0) OnLog?.Invoke($"INFO: Logiwa status {c.Status}: {held} order(s) put on hold.");
+                    if (released > 0) OnLog?.Invoke($"INFO: Logiwa status {c.Status}: {released} order(s) offered to the machine again.");
+                    changed |= marked + held + released > 0;
+                }
+
+                if (page.MaxSeq > after)
+                    sql.ExecuteStoredProcedure("dbo.sp_Status_SetCursor", new Dictionary<string, object> { { "@MaxSeq", page.MaxSeq } });
+                if (changed) StatusChanged?.Invoke();
+
+                if (!page.HasMore || page.MaxSeq <= after) break;
+                after = page.MaxSeq;
+            }
+        }
+
+        /// <summary>Raised on a worker thread when a status change altered local orders (the overview should refresh).</summary>
+        public event Action StatusChanged;
 
         private void SendLabelRequests(SQLManager sql, CmcWebClient web, string warehouse, CancellationToken ct)
         {
