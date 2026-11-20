@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CMC size test</title>
+<style>
+  body { font-family: Segoe UI, Arial, sans-serif; margin: 24px; color: #0f172a; background: #fff; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .muted { color: #5b6475; font-size: 14px; }
+  .card { border: 1px solid #c3c9d4; border-radius: 10px; padding: 16px 20px; margin: 18px 0; max-width: 560px; page-break-inside: avoid; }
+  .card h2 { font-size: 16px; margin: 0 0 2px; }
+  .expect { font-size: 14px; margin: 0 0 8px; }
+  svg { display: block; width: 100%; max-width: 520px; height: auto; }
+  select { font-size: 14px; padding: 4px; }
+  @media print { .noprint { display: none; } }
+</style>
+</head>
+<body>
+<h1>CMC size test</h1>
+<p class="muted">Scan in this order and stop at the first problem. Instructions: DOC\size-test\SIZE-TEST-STEPS.txt.</p>
+<p class="noprint">Barcode type:
+  <select id="type">
+    <option value="CODE128" selected>Code 128</option>
+    <option value="CODE39">Code 39</option>
+  </select>
+  <span class="muted">(change it if the scanner does not read the first one)</span>
+</p>
+<p id="err" class="muted" style="color:#b91c1c"></p>
+
+<div class="card">
+  <h2>SIZEA01 &nbsp;·&nbsp; 2500 characters</h2>
+  <p class="expect">Series A: text and boxes only. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEA01"></svg>
+</div>
+
+<div class="card">
+  <h2>SIZEA02 &nbsp;·&nbsp; 3000 characters</h2>
+  <p class="expect">Series A: text and boxes only. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEA02"></svg>
+</div>
+
+<div class="card">
+  <h2>SIZEA03 &nbsp;·&nbsp; 4000 characters</h2>
+  <p class="expect">Series A: text and boxes only. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEA03"></svg>
+</div>
+
+<div class="card">
+  <h2>SIZEA04 &nbsp;·&nbsp; 5000 characters</h2>
+  <p class="expect">Series A: text and boxes only. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEA04"></svg>
+</div>
+
+<div class="card">
+  <h2>SIZEA05 &nbsp;·&nbsp; 6000 characters</h2>
+  <p class="expect">Series A: text and boxes only. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEA05"></svg>
+</div>
+
+<div class="card">
+  <h2>SIZEA06 &nbsp;·&nbsp; 8000 characters</h2>
+  <p class="expect">Series A: text and boxes only. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEA06"></svg>
+</div>
+
+<div class="card">
+  <h2>SIZEA07 &nbsp;·&nbsp; 10000 characters</h2>
+  <p class="expect">Series A: text and boxes only. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEA07"></svg>
+</div>
+
+<div class="card">
+  <h2>SIZEA08 &nbsp;·&nbsp; 13000 characters</h2>
+  <p class="expect">Series A: text and boxes only. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEA08"></svg>
+</div>
+
+<div class="card">
+  <h2>SIZEA09 &nbsp;·&nbsp; 16000 characters</h2>
+  <p class="expect">Series A: text and boxes only. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEA09"></svg>
+</div>
+
+<div class="card">
+  <h2>SIZEA10 &nbsp;·&nbsp; 20000 characters</h2>
+  <p class="expect">Series A: text and boxes only. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEA10"></svg>
+</div>
+
+<div class="card">
+  <h2>SIZEA11 &nbsp;·&nbsp; 24000 characters</h2>
+  <p class="expect">Series A: text and boxes only. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEA11"></svg>
+</div>
+
+<div class="card">
+  <h2>SIZEB01 &nbsp;·&nbsp; 3000 characters</h2>
+  <p class="expect">Series B: with a picture. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEB01"></svg>
+</div>
+
+<div class="card">
+  <h2>SIZEB02 &nbsp;·&nbsp; 6000 characters</h2>
+  <p class="expect">Series B: with a picture. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEB02"></svg>
+</div>
+
+<div class="card">
+  <h2>SIZEB03 &nbsp;·&nbsp; 10000 characters</h2>
+  <p class="expect">Series B: with a picture. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEB03"></svg>
+</div>
+
+<div class="card">
+  <h2>SIZEB04 &nbsp;·&nbsp; 16000 characters</h2>
+  <p class="expect">Series B: with a picture. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEB04"></svg>
+</div>
+
+<div class="card">
+  <h2>SIZEB05 &nbsp;·&nbsp; 24000 characters</h2>
+  <p class="expect">Series B: with a picture. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEB05"></svg>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
+<script>
+  function draw() {
+    var type = document.getElementById('type').value;
+    var err = document.getElementById('err');
+    err.textContent = '';
+    if (typeof JsBarcode === 'undefined') {
+      err.textContent = 'The barcode library could not be loaded (no internet?). Open this page on a PC with internet access.';
+      return;
+    }
+    document.querySelectorAll('svg.bc').forEach(function (el) {
+      try {
+        JsBarcode(el, el.getAttribute('data-value'), { format: type, width: 3, height: 90, displayValue: true, fontSize: 20, margin: 10 });
+      } catch (e) {
+        err.textContent = 'Could not draw ' + el.getAttribute('data-value') + ' as ' + type + ': ' + e.message;
+      }
+    });
+  }
+  document.getElementById('type').addEventListener('change', draw);
+  draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+CMC SIZE TEST - ROUND 2
+=======================
+
+Round 1 result: SIZEA11 (24,000 characters, text and boxes) and SIZEB05 (24,000 characters, with a picture) both worked.
+Round 2 checks:
+  1. Three REAL AusPost labels converted from PDF the way production would do it (300 dpi, compressed picture "Z64",
+     about 22,000 - 23,000 characters, so inside the size that already worked). Checks print quality, barcode and label match.
+  2. Bigger sizes (32,000 .. 52,000 characters, text and boxes only) to find where the limit really is, so we know the margin.
+     They stop just below 53,791 characters: the size of a known big Australia Post label (picture, 203 dpi).
+Outside production hours, someone ready to restart the machine, as before.
+
+BEFORE
+  1. Packing PC on DEV, machine connected, no real orders on the machine.
+  2. If round 1 cartons are still there, run DOC\cleanup-test-cartons.sql first.
+  3. SSMS, database Local_CMC_Logiwa_DEV: run DOC\size-test\round2\insert-round2-cartons.sql
+     The last result lists 15 rows (3 x PDFTEST-..., SIZEA12..SIZEA16, SIZEC01..SIZEC05, 2 x SIZETEST-REAL-...), all Ready.
+  4. Open DOC\size-test\round2\scan-round2.html.
+
+PART 1 - real labels (scan values are the CON numbers)
+     33VN80208828   33VN80209045   33VN80209048
+  For each note:
+     - printed at full size (whole 100 x 150 mm label, nothing cut off), text sharp
+     - the long barcode scans with a handheld scanner (it reads 33VN80208828... the long AP Article ID)
+     - the machine's label match passes (LAB OK) and the carton finishes
+     - sending weight/size to Logiwa will FAIL for these: expected, they are not Logiwa orders
+  If these fail, stop and tell me (part 2 is not needed then).
+
+PART 2 - bigger sizes, in order, stop at the first FAILED or CRASHED:
+     SIZEA12 32,000   SIZEA13 40,000   SIZEA14 44,000   SIZEA15 48,000   SIZEA16 52,000
+
+PART 3 - find the crash point: 300 dpi picture labels, bigger and bigger. Expect a crash somewhere here.
+  In order, stop at the first FAILED or CRASHED (restart the machine, then stop the test):
+     SIZEC01          64,000   picture label
+     36HGH1327710     71,070   REAL AusPost label in the large form (scan value = CON NO)
+     36HGH1327750     76,874   REAL AusPost label in the large form (scan value = CON NO)
+     SIZEC02         100,000   picture label
+     SIZEC03         128,000   picture label
+     SIZEC04         160,000   picture label
+     SIZEC05         200,000   picture label
+  Note for the last one that worked and the one that failed: did the machine just refuse, print wrong, freeze, or crash?
+
+AFTER
+  1. Export the message log into DOC\size-test\round2\.
+  2. Run DOC\cleanup-test-cartons.sql.
+  3. Tell me per carton: OK / FAILED / CRASHED, and a photo of one real AusPost label next to the original PDF if you can.
+
+WHAT IT DECIDES
+  - Real labels OK + limit well above 24,000 (e.g. 48,000 or more): convert any StarShipIt PDF to a 300 dpi picture label.
+    Simple, works for every layout. A safety limit (setting) refuses any label above the safe size instead of crashing the CMC.
+  - Real labels OK but limit close to 24,000: same, but busier labels may not fit -> also build the converter that redraws
+    the PDF with normal ZPL commands (smaller, about 3,000 - 6,000).
+  - Real labels not readable / not matching: picture approach not good enough -> redraw converter.

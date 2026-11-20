@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CMC size test round 2</title>
+<style>
+  body { font-family: Segoe UI, Arial, sans-serif; margin: 24px; color: #0f172a; background: #fff; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .muted { color: #5b6475; font-size: 14px; }
+  .card { border: 1px solid #c3c9d4; border-radius: 10px; padding: 16px 20px; margin: 18px 0; max-width: 560px; page-break-inside: avoid; }
+  .card h2 { font-size: 16px; margin: 0 0 2px; }
+  .expect { font-size: 14px; margin: 0 0 8px; }
+  svg { display: block; width: 100%; max-width: 520px; height: auto; }
+  select { font-size: 14px; padding: 4px; }
+  @media print { .noprint { display: none; } }
+</style>
+</head>
+<body>
+<h1>CMC size test round 2</h1>
+<p class="muted">Scan in this order, stop at the first problem. Instructions: DOC\size-test\round2\SIZE-TEST-ROUND2-STEPS.txt.</p>
+<p class="noprint">Barcode type:
+  <select id="type">
+    <option value="CODE128" selected>Code 128</option>
+    <option value="CODE39">Code 39</option>
+  </select>
+  <span class="muted">(change it if the scanner does not read the first one)</span>
+</p>
+<p id="err" class="muted" style="color:#b91c1c"></p>
+
+<div class="card">
+  <h2>1. 33VN80208828</h2>
+  <p class="expect">Real AusPost label from PDF, about 22,700 characters. Check: label printed sharp and full size, barcode scans, label match passes Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="33VN80208828"></svg>
+</div>
+
+<div class="card">
+  <h2>2. 33VN80209045</h2>
+  <p class="expect">Real AusPost label from PDF, about 23,000 characters. Same checks Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="33VN80209045"></svg>
+</div>
+
+<div class="card">
+  <h2>3. 33VN80209048</h2>
+  <p class="expect">Real AusPost label from PDF, about 22,300 characters. Same checks Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="33VN80209048"></svg>
+</div>
+
+<div class="card">
+  <h2>4. SIZEA12</h2>
+  <p class="expect">Size test, 32,000 characters. Only if the three real labels were OK Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEA12"></svg>
+</div>
+
+<div class="card">
+  <h2>5. SIZEA13</h2>
+  <p class="expect">Size test, 40,000 characters.  Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEA13"></svg>
+</div>
+
+<div class="card">
+  <h2>6. SIZEA14</h2>
+  <p class="expect">Size test, 44,000 characters.  Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEA14"></svg>
+</div>
+
+<div class="card">
+  <h2>7. SIZEA15</h2>
+  <p class="expect">Size test, 48,000 characters.  Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEA15"></svg>
+</div>
+
+<div class="card">
+  <h2>8. SIZEA16</h2>
+  <p class="expect">Size test, 52,000 characters (just below the 53,791 Australia Post label).  Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEA16"></svg>
+</div>
+
+<div class="card">
+  <h2>9. SIZEC01</h2>
+  <p class="expect">Part 3: 300 dpi picture label, 64,000 characters. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEC01"></svg>
+</div>
+
+<div class="card">
+  <h2>10. 36HGH1327710</h2>
+  <p class="expect">Part 3: real AusPost label, large form, 71,070 characters. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="36HGH1327710"></svg>
+</div>
+
+<div class="card">
+  <h2>11. 36HGH1327750</h2>
+  <p class="expect">Part 3: real AusPost label, large form, 76,874 characters. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="36HGH1327750"></svg>
+</div>
+
+<div class="card">
+  <h2>12. SIZEC02</h2>
+  <p class="expect">Part 3: 300 dpi picture label, 100,000 characters. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEC02"></svg>
+</div>
+
+<div class="card">
+  <h2>13. SIZEC03</h2>
+  <p class="expect">Part 3: 300 dpi picture label, 128,000 characters. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEC03"></svg>
+</div>
+
+<div class="card">
+  <h2>14. SIZEC04</h2>
+  <p class="expect">Part 3: 300 dpi picture label, 160,000 characters. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEC04"></svg>
+</div>
+
+<div class="card">
+  <h2>15. SIZEC05</h2>
+  <p class="expect">Part 3: 300 dpi picture label, 200,000 characters. Result: OK / failed / crashed: ________</p>
+  <svg class="bc" data-value="SIZEC05"></svg>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
+<script>
+  function draw() {
+    var type = document.getElementById('type').value;
+    var err = document.getElementById('err');
+    err.textContent = '';
+    if (typeof JsBarcode === 'undefined') {
+      err.textContent = 'The barcode library could not be loaded (no internet?). Open this page on a PC with internet access.';
+      return;
+    }
+    document.querySelectorAll('svg.bc').forEach(function (el) {
+      try {
+        JsBarcode(el, el.getAttribute('data-value'), { format: type, width: 3, height: 90, displayValue: true, fontSize: 20, margin: 10 });
+      } catch (e) {
+        err.textContent = 'Could not draw ' + el.getAttribute('data-value') + ' as ' + type + ': ' + e.message;
+      }
+    });
+  }
+  document.getElementById('type').addEventListener('change', draw);
+  draw();
+</script>
+</body>
+</html>

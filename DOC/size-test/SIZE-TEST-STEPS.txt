@@ -1,0 +1,42 @@
+CMC SIZE TEST - how big a label can the CMC take?
+=================================================
+
+Why: labels from StarShipIt will come as PDF. Turned into ZPL they are bigger than today's labels (about 2,100 characters).
+A big label with a picture crashed the CMC before. This test finds the largest label the CMC handles, and whether the
+picture command itself is a problem. Do it OUTSIDE production hours, with someone ready to restart the machine.
+
+The labels are test labels only: big text "TEST A01" etc., their size, a grid of small boxes or a block of dots, and a
+barcode. Scan value = label barcode, so the label match should pass.
+
+BEFORE
+  1. Packing PC on DEV. Machine connected as usual. No real orders on the machine.
+  2. SSMS, database Local_CMC_Logiwa_DEV, open and run:  DOC\size-test\insert-size-test-cartons.sql
+     The last result lists 16 rows SIZEA01..SIZEA11 and SIZEB01..SIZEB05, all Ready.
+  3. Open DOC\size-test\scan-size-test.html (print it, or show it on a screen next to the scanner).
+  4. In the app, keep the message log visible. Have a pen to note the result of each step.
+
+SERIES A - size only (text and boxes, no picture). Go in order, one carton at a time:
+     SIZEA01  2,500   SIZEA02  3,000   SIZEA03  4,000   SIZEA04  5,000   SIZEA05  6,000   SIZEA06  8,000
+     SIZEA07 10,000   SIZEA08 13,000   SIZEA09 16,000   SIZEA10 20,000   SIZEA11 24,000
+  For each: scan it, let the carton go through, and note:
+     OK        = label printed, readable, barcode complete, label match passed, carton finished
+     FAILED    = machine reported a print / label error, or the label is cut off / wrong, but the machine keeps running
+     CRASHED   = machine stopped responding / had to be restarted
+  STOP SERIES A at the first FAILED or CRASHED. Restart the machine if needed. Do not go further up.
+
+SERIES B - picture command. Only the sizes that were OK in series A:
+     SIZEB01  3,000   SIZEB02  6,000   SIZEB03 10,000   SIZEB04 16,000   SIZEB05 24,000
+  Same notes. STOP at the first FAILED or CRASHED.
+  (If series A already failed at, say, 8,000, run only SIZEB01 and SIZEB02.)
+
+AFTER
+  1. App: Export the message log (button in the log panel) and put the file in DOC\size-test\.
+  2. SSMS: run DOC\cleanup-test-cartons.sql (removes all TEST cartons, including these).
+  3. Send me: the result of every step you ran (OK / FAILED / CRASHED), and a photo of one printed A label and one B label.
+
+WHAT WE LEARN
+  - Largest safe size (last OK in series A): every converted label must stay below it, with a margin.
+  - Whether a picture is accepted at all (series B): if B fails where A of the same size was OK, the picture command is the
+    problem, not the size, and the PDF conversion must avoid pictures completely.
+  - For reference: a StarShipIt-type label as a picture is about 23,000 characters at 300 dpi; drawn with normal ZPL
+    commands (the converter I would build) roughly 3,000 - 6,000.
