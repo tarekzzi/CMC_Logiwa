@@ -4,5 +4,8 @@
     public static class SessionVariables
     {
         public static string UserName { get; set; }
+
+        /// <summary>Administrators manage users and every setting; operators run the machine and change their own password.</summary>
+        public static bool IsAdmin { get; set; }
     }
 }

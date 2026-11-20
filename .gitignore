@@ -20,3 +20,7 @@ db/generated/
 # Packing PC update packages (built zips, 1.6 MB each): keep the scripts and notes, not the binaries
 DOC/packing-pc/**/*.zip
 DOC/packing-pc/*.zip
+
+# Real carrier labels (customer names and addresses) and labels converted from them: keep out of git
+DOC/Labels/
+DOC/size-test/round2/insert-round2-cartons.sql

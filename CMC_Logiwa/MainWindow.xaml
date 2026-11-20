@@ -72,6 +72,21 @@
             <TextBlock x:Name="envBannerText" FontWeight="SemiBold" FontSize="13" HorizontalAlignment="Center" />
         </Border>
 
+        <!-- ===== Backend health: red while the web VM / Logiwa / webhooks have a problem, green for a while after it is solved ===== -->
+        <Border x:Name="healthBanner" Visibility="Collapsed" Padding="24,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="healthBannerText" Grid.Column="0" FontWeight="SemiBold" FontSize="14"
+                           TextWrapping="Wrap" VerticalAlignment="Center" />
+                <Button x:Name="btnHealthCheckNow" Grid.Column="1" Content="Check now" Margin="16,0,0,0"
+                        Style="{StaticResource SecondaryButton}"
+                        VerticalAlignment="Center" Click="btnHealthCheckNow_Click" />
+            </Grid>
+        </Border>
+
         <!-- ===== Header ===== -->
         <Border Background="{StaticResource SurfaceBrush}"
                 BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,0,0,1" Padding="24,0">

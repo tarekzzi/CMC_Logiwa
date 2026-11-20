@@ -32,13 +32,38 @@ namespace CMC_Logiwa
             _machineConnected = machineConnected;
 
             ShowConnection();
-            if (startOnMachineTab) tabsSettings.SelectedItem = tabMachine;
+            ApplyRole();
+            if (startOnMachineTab && _isAdmin) tabsSettings.SelectedItem = tabMachine;
             Closing += SettingsWindow_Closing;
             Loaded += async (s, e) =>
             {
                 await LoadUsersAsync();
+                if (!_isAdmin) return;
                 await LoadMachineAsync();
+                await LoadWebSettingsAsync();
             };
+        }
+
+        private readonly bool _isAdmin = SessionVariables.IsAdmin;
+
+        /// <summary>True when the administrator chose the other environment: the app restarts at the sign-in window.</summary>
+        public bool EnvironmentSwitchRequested { get; private set; }
+
+        /// <summary>
+        /// Operators see the users and can change their own password; everything else (users, machine, database and web service,
+        /// environment, web VM settings) is for administrators.
+        /// </summary>
+        private void ApplyRole()
+        {
+            if (_isAdmin) return;
+            cardAddUser.Visibility = Visibility.Collapsed;
+            btnToggleActive.Visibility = Visibility.Collapsed;
+            btnToggleAdmin.Visibility = Visibility.Collapsed;
+            tabMachine.Visibility = Visibility.Collapsed;
+            tabWeb.Visibility = Visibility.Collapsed;
+            btnChangeDb.IsEnabled = false;
+            btnSwitchEnv.IsEnabled = false;
+            lblChangeHint.Text = "Only an administrator can change these settings or the environment.";
         }
 
         // ===== Warehouse (drop-down filled from Logiwa through the web service) =====
@@ -237,7 +262,9 @@ namespace CMC_Logiwa
                 gridUsers.ItemsSource = users;
 
                 int active = users.FindAll(u => u.IsActive).Count;
-                lblUsersInfo.Text = $"{users.Count} user(s), {active} active. A switched-off user cannot log in; nothing is deleted.";
+                int admins = users.FindAll(u => u.IsActive && u.IsAdmin).Count;
+                lblUsersInfo.Text = $"{users.Count} user(s), {active} active, {admins} administrator(s). A switched-off user cannot log in; nothing is deleted."
+                                    + (_isAdmin ? "" : " You can change your own password.");
 
                 if (select != null)
                     gridUsers.SelectedItem = users.Find(u => string.Equals(u.Username, select, StringComparison.OrdinalIgnoreCase));
@@ -260,9 +287,12 @@ namespace CMC_Logiwa
         {
             UserInfo u = Selected;
             lblSelected.Text = u == null ? "Selected user" : "Selected user: " + u.Username;
-            btnSetPassword.IsEnabled = u != null;
+            bool self = u != null && string.Equals(u.Username, SessionVariables.UserName, StringComparison.OrdinalIgnoreCase);
+            btnSetPassword.IsEnabled = u != null && (_isAdmin || self);   // an operator only sets their own password
             btnToggleActive.IsEnabled = u != null;
             btnToggleActive.Content = u != null && !u.IsActive ? "Switch on" : "Switch off";
+            btnToggleAdmin.IsEnabled = u != null;
+            btnToggleAdmin.Content = u != null && u.IsAdmin ? "Make operator (remove administrator)" : "Make administrator";
             txtResetPassword.Clear();
             txtResetPassword2.Clear();
         }
@@ -277,13 +307,16 @@ namespace CMC_Logiwa
                 return;
             }
 
-            if (!Run(() => _auth.CreateUser(name, txtNewPassword.Password, out string err) ? null : err))
+            if (!_isAdmin) return;
+            bool admin = chkNewAdmin.IsChecked == true;
+            if (!Run(() => _auth.CreateUser(name, txtNewPassword.Password, admin, out string err) ? null : err))
                 return;
 
             txtNewUser.Clear();
             txtNewPassword.Clear();
             txtNewPassword2.Clear();
-            ShowStatus($"User {name} added.", error: false);
+            chkNewAdmin.IsChecked = false;
+            ShowStatus($"User {name} added as {(admin ? "administrator" : "operator")}.", error: false);
             await LoadUsersAsync(select: name);
         }
 
@@ -291,6 +324,11 @@ namespace CMC_Logiwa
         {
             UserInfo u = Selected;
             if (u == null) return;
+            if (!_isAdmin && !string.Equals(u.Username, SessionVariables.UserName, StringComparison.OrdinalIgnoreCase))
+            {
+                ShowStatus("You can only change your own password.", error: true);
+                return;
+            }
 
             if (txtResetPassword.Password != txtResetPassword2.Password)
             {
@@ -310,7 +348,7 @@ namespace CMC_Logiwa
         private async void btnToggleActive_Click(object sender, RoutedEventArgs e)
         {
             UserInfo u = Selected;
-            if (u == null) return;
+            if (u == null || !_isAdmin) return;
 
             bool makeActive = !u.IsActive;
             if (!makeActive && string.Equals(u.Username, SessionVariables.UserName, StringComparison.OrdinalIgnoreCase))
@@ -328,6 +366,26 @@ namespace CMC_Logiwa
                 return;
 
             ShowStatus($"{u.Username} is now {(makeActive ? "active" : "switched off")}.", error: false);
+            await LoadUsersAsync(select: u.Username);
+        }
+
+        private async void btnToggleAdmin_Click(object sender, RoutedEventArgs e)
+        {
+            UserInfo u = Selected;
+            if (u == null || !_isAdmin) return;
+
+            bool makeAdmin = !u.IsAdmin;
+            bool self = string.Equals(u.Username, SessionVariables.UserName, StringComparison.OrdinalIgnoreCase);
+            string question = makeAdmin
+                ? $"Make {u.Username} an administrator? Administrators manage users and change every setting, including the web VM / Logiwa settings."
+                : $"Make {u.Username} an operator? {(self ? "You will lose the administrator role when you sign in next time." : "")}";
+            if (MessageBox.Show(this, question, "User role", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
+                return;
+
+            if (!Run(() => _auth.SetAdmin(u.Username, makeAdmin, out string err) ? null : err))
+                return;
+
+            ShowStatus($"{u.Username} is now {(makeAdmin ? "an administrator" : "an operator")}.", error: false);
             await LoadUsersAsync(select: u.Username);
         }
 
@@ -359,17 +417,62 @@ namespace CMC_Logiwa
             valWeb.Text = string.IsNullOrWhiteSpace(s?.WebServiceUrl) ? "not set (web sync is off)" : s.WebServiceUrl;
             valKey.Text = string.IsNullOrWhiteSpace(s?.ApiKey) ? "not set" : "saved (hidden)";
 
-            btnChangeDb.IsEnabled = !_machineConnected;
+            btnChangeDb.IsEnabled = !_machineConnected && _isAdmin;
             lblChangeHint.Text = _machineConnected
                 ? "Disconnect from the machine first: the open connection uses the current database."
                 : "";
+
+            // DEV and PRO are both kept on this PC; switching restarts the app at the sign-in window (each has its own users).
+            string other = s?.EnvironmentName == DbSettings.Pro ? DbSettings.Dev : DbSettings.Pro;
+            bool otherReady = DbSettingsStore.LoadProfile(other) != null;
+            btnSwitchEnv.Content = "Switch to " + other;
+            btnSwitchEnv.IsEnabled = !_machineConnected && _isAdmin;
+            lblEnvInfo.Text = $"In use: {s?.EnvironmentName ?? "not set"}. "
+                              + (otherReady ? $"{other} is also set up on this PC: switching restarts the app at the sign-in window."
+                                            : $"{other} is not set up on this PC yet: switching asks for its database and web service settings first.");
+        }
+
+        private void btnSwitchEnv_Click(object sender, RoutedEventArgs e)
+        {
+            if (!_isAdmin || _machineConnected) return;
+            string other = DbSettingsStore.Load()?.EnvironmentName == DbSettings.Pro ? DbSettings.Dev : DbSettings.Pro;
+
+            if (DbSettingsStore.LoadProfile(other) == null)
+            {
+                var dlg = new DbSettingsWindow(firstRun: false, environment: other) { Owner = this };
+                if (dlg.ShowDialog() != true) { ShowConnection(); return; }   // saving it also makes it the one in use
+            }
+            else
+            {
+                if (MessageBox.Show(this,
+                        $"Switch this PC to {other}?\n\n" + (other == DbSettings.Pro
+                            ? "PRO = live orders and real cartons."
+                            : "DEV = Logiwa sandbox and test data: real orders are NOT processed while DEV is in use.")
+                        + "\n\nThe app restarts at the sign-in window; sign in with a " + other + " user.",
+                        "Switch environment", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+                    return;
+                DbSettingsStore.SetActive(other);
+            }
+
+            EnvironmentSwitchRequested = true;
+            Close();
         }
 
         private void btnChangeDb_Click(object sender, RoutedEventArgs e)
         {
+            if (!_isAdmin) return;
+            string envBefore = DbSettingsStore.Load()?.EnvironmentName;
             var dlg = new DbSettingsWindow(firstRun: false) { Owner = this };
             if (dlg.ShowDialog() != true)
                 return;
+
+            if (DbSettingsStore.Load()?.EnvironmentName != envBefore)
+            {
+                // The other environment was saved in that window: it is in use now, with its own users. Restart at the sign-in window.
+                EnvironmentSwitchRequested = true;
+                Close();
+                return;
+            }
 
             ConnectionSettingsChanged = true;
             ShowConnection();

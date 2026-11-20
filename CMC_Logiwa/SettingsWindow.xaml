@@ -40,6 +40,7 @@
                                 <DataGrid x:Name="gridUsers" SelectionChanged="gridUsers_SelectionChanged">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="User name" Binding="{Binding Username}" Width="*" MinWidth="180" />
+                                        <DataGridTextColumn Header="Role" Binding="{Binding RoleText}" Width="130" />
                                         <DataGridTextColumn Header="Status" Binding="{Binding StatusText}" Width="130" />
                                         <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="120" />
                                         <DataGridTextColumn Header="Last login" Binding="{Binding LastLoginText}" Width="160" />
@@ -56,7 +57,7 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <Border Grid.Column="0" Style="{StaticResource Card}">
+                        <Border x:Name="cardAddUser" Grid.Column="0" Style="{StaticResource Card}">
                             <StackPanel>
                                 <TextBlock Text="Add a user" Style="{StaticResource CardTitle}" />
                                 <Label Content="User name" Target="{Binding ElementName=txtNewUser}" />
@@ -64,7 +65,8 @@
                                 <Label Content="Password" Target="{Binding ElementName=txtNewPassword}" />
                                 <PasswordBox x:Name="txtNewPassword" Margin="0,0,0,10" />
                                 <Label Content="Password again" Target="{Binding ElementName=txtNewPassword2}" />
-                                <PasswordBox x:Name="txtNewPassword2" Margin="0,0,0,14" />
+                                <PasswordBox x:Name="txtNewPassword2" Margin="0,0,0,10" />
+                                <CheckBox x:Name="chkNewAdmin" Content="Administrator (manages users and settings)" Margin="0,0,0,14" />
                                 <Button x:Name="btnAddUser" Content="Add user" Style="{StaticResource PrimaryButton}" MinHeight="40" Click="btnAddUser_Click" />
                             </StackPanel>
                         </Border>
@@ -78,6 +80,7 @@
                                 <PasswordBox x:Name="txtResetPassword2" Margin="0,0,0,14" />
                                 <Button x:Name="btnSetPassword" Content="Set password" Style="{StaticResource PrimaryButton}" MinHeight="40" Click="btnSetPassword_Click" />
                                 <Button x:Name="btnToggleActive" Content="Switch off" MinHeight="40" Margin="0,8,0,0" Click="btnToggleActive_Click" />
+                                <Button x:Name="btnToggleAdmin" Content="Make administrator" MinHeight="40" Margin="0,8,0,0" Click="btnToggleAdmin_Click" />
                             </StackPanel>
                         </Border>
                     </Grid>
@@ -124,7 +127,7 @@
             </TabItem>
 
             <!-- ===== Connection ===== -->
-            <TabItem Header="Database and web service">
+            <TabItem x:Name="tabConnection" Header="Database and web service">
                 <Border Style="{StaticResource Card}" VerticalAlignment="Top">
                     <StackPanel>
                         <TextBlock Text="This PC" Style="{StaticResource CardTitle}" />
@@ -155,8 +158,50 @@
                         <Button x:Name="btnChangeDb" Content="Change database and web service settings…" HorizontalAlignment="Left"
                                 MinHeight="40" Padding="18,0" Margin="0,20,0,0" Click="btnChangeDb_Click" />
                         <TextBlock x:Name="lblChangeHint" Style="{StaticResource MutedText}" FontSize="12.5" TextWrapping="Wrap" Margin="0,8,0,0" />
+
+                        <TextBlock Text="Environment" Style="{StaticResource CardTitle}" Margin="0,24,0,4" />
+                        <TextBlock x:Name="lblEnvInfo" Style="{StaticResource MutedText}" FontSize="12.5" TextWrapping="Wrap" Margin="0,0,0,10" />
+                        <Button x:Name="btnSwitchEnv" Content="Switch to PRO" HorizontalAlignment="Left" MinHeight="40" Padding="18,0" Click="btnSwitchEnv_Click" />
                     </StackPanel>
                 </Border>
+            </TabItem>
+
+            <!-- ===== Web VM / Logiwa (administrators): settings of the web VM, stored there, applied without a restart ===== -->
+            <TabItem x:Name="tabWeb" Header="Web VM / Logiwa">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="lblWebIntro" Style="{StaticResource MutedText}" FontSize="12.5" TextWrapping="Wrap" VerticalAlignment="Center"
+                                   Text="Settings of the web VM (the link between this PC and Logiwa). Stored on the web VM, in force within seconds, no restart. Saving needs the administrator key." />
+                        <Button x:Name="btnWebReload" Grid.Column="1" Content="Reload" MinHeight="36" Padding="16,0" Margin="12,0,0,0" Click="btnWebReload_Click" />
+                    </Grid>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="panelWeb" Margin="0,0,8,0" />
+                    </ScrollViewer>
+                    <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,10,0,0" Padding="16,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="260" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Label Content="Administrator key" Target="{Binding ElementName=txtAdminKey}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <PasswordBox x:Name="txtAdminKey" Grid.Column="1" VerticalAlignment="Center"
+                                         ToolTip="Typed for every save, never stored on this PC. Made with DOC\New-CmcApiKey.ps1 -Admin." />
+                            <Button x:Name="btnWebSave" Grid.Column="3" Content="Save changes" Style="{StaticResource PrimaryButton}"
+                                    MinHeight="40" Padding="18,0" Margin="12,0,0,0" Click="btnWebSave_Click" />
+                        </Grid>
+                    </Border>
+                </Grid>
             </TabItem>
         </TabControl>
 

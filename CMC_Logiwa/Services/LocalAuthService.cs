@@ -10,10 +10,12 @@ namespace CMC_Logiwa.Services
     {
         public string Username { get; set; }
         public bool IsActive { get; set; }
+        public bool IsAdmin { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? LastLoginAt { get; set; }
 
         public string StatusText => IsActive ? "Active" : "Switched off";
+        public string RoleText => IsAdmin ? "Administrator" : "Operator";
         public string CreatedText => CreatedAt.ToString("yyyy-MM-dd");
         public string LastLoginText => LastLoginAt.HasValue ? LastLoginAt.Value.ToString("yyyy-MM-dd HH:mm") : "never";
     }
@@ -43,7 +45,10 @@ namespace CMC_Logiwa.Services
             return dt.Rows.Count > 0 && Convert.ToInt32(dt.Rows[0]["UserCount"]) > 0;
         }
 
-        public bool CreateUser(string username, string password, out string error)
+        /// <summary>The very first user always becomes administrator (the procedure makes sure of it).</summary>
+        public bool CreateUser(string username, string password, out string error) => CreateUser(username, password, false, out error);
+
+        public bool CreateUser(string username, string password, bool isAdmin, out string error)
         {
             error = null;
             username = (username ?? "").Trim();
@@ -70,7 +75,8 @@ namespace CMC_Logiwa.Services
                 { "@Username", username },
                 { "@PasswordHash", hash },
                 { "@Salt", salt },
-                { "@Iterations", DefaultIterations }
+                { "@Iterations", DefaultIterations },
+                { "@IsAdmin", isAdmin }
             });
 
             string result = dt.Rows.Count > 0 ? dt.Rows[0]["Result"]?.ToString() : null;
@@ -92,6 +98,7 @@ namespace CMC_Logiwa.Services
                 {
                     Username = row["Username"].ToString(),
                     IsActive = Convert.ToBoolean(row["IsActive"]),
+                    IsAdmin = row.Table.Columns.Contains("IsAdmin") && Convert.ToBoolean(row["IsAdmin"]),
                     CreatedAt = Convert.ToDateTime(row["CreatedAt"]),
                     LastLoginAt = row["LastLoginAt"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(row["LastLoginAt"])
                 });
@@ -153,14 +160,42 @@ namespace CMC_Logiwa.Services
                 return true;
 
             error = result == "LAST_ACTIVE" ? "This is the only active user: switching it off would leave nobody able to log in."
+                  : result == "LAST_ADMIN" ? "This is the only active administrator: give another user the administrator role first."
+                  : result == "NOT_FOUND" ? "That user was not found."
+                  : "The change could not be saved.";
+            return false;
+        }
+
+        /// <summary>
+        /// Gives or takes the administrator role. The last active administrator keeps it (the procedure refuses), so somebody can
+        /// always manage the PC.
+        /// </summary>
+        public bool SetAdmin(string username, bool isAdmin, out string error)
+        {
+            error = null;
+            DataTable dt = _sql.ExecuteStoredProcedure("dbo.sp_User_SetAdmin", new Dictionary<string, object>
+            {
+                { "@Username", (username ?? "").Trim() },
+                { "@IsAdmin", isAdmin }
+            });
+
+            string result = dt.Rows.Count > 0 ? dt.Rows[0]["Result"]?.ToString() : null;
+            if (result == "OK")
+                return true;
+
+            error = result == "LAST_ADMIN" ? "This is the only active administrator: give another user the administrator role first."
                   : result == "NOT_FOUND" ? "That user was not found."
                   : "The change could not be saved.";
             return false;
         }
 
         /// <summary>Returns true when the username exists, is active and the password matches.</summary>
-        public bool Authenticate(string username, string password)
+        public bool Authenticate(string username, string password) => Authenticate(username, password, out _);
+
+        /// <param name="isAdmin">The user's role, read with the password check (false when the login fails).</param>
+        public bool Authenticate(string username, string password, out bool isAdmin)
         {
+            isAdmin = false;
             username = (username ?? "").Trim();
             if (username.Length == 0 || string.IsNullOrEmpty(password))
                 return false;
@@ -184,6 +219,8 @@ namespace CMC_Logiwa.Services
             byte[] actual = ComputeHash(password, salt, iterations);
             if (!FixedTimeEquals(expected, actual))
                 return false;
+
+            isAdmin = row.Table.Columns.Contains("IsAdmin") && Convert.ToBoolean(row["IsAdmin"]);
 
             try
             {

@@ -283,6 +283,121 @@ namespace CMC_Logiwa.Services
             }
         }
 
+        /// <summary>
+        /// GET /api/cmc/health: what the web VM knows about its database, its calls to Logiwa and the webhooks.
+        /// A CmcWebException means the web VM did not answer properly (the caller reports that as a problem itself).
+        /// </summary>
+        public async Task<BackendHealthReport> GetHealthAsync(CancellationToken ct)
+        {
+            string body = await SendAsync(() => _http.GetAsync("api/cmc/health", ct), "health", ct);
+
+            try
+            {
+                JObject root;
+                using (var reader = new JsonTextReader(new System.IO.StringReader(body)) { DateParseHandling = DateParseHandling.None })
+                    root = JObject.Load(reader);
+
+                var report = new BackendHealthReport
+                {
+                    Ok = root.Value<bool?>("ok") ?? false,
+                    LastWebhookAt = LocalTime(root.Value<string>("lastWebhookAt")),
+                    PcCheckMinutes = root.Value<int?>("pcCheckMinutes"),
+                    StartupGraceMinutes = root.Value<int?>("startupGraceMinutes")
+                };
+                foreach (JObject p in (JArray)root["problems"] ?? new JArray())
+                    report.Problems.Add(new BackendProblem
+                    {
+                        Code = p.Value<string>("code") ?? "unknown",
+                        Message = p.Value<string>("message") ?? "",
+                        Since = LocalTime(p.Value<string>("since"))
+                    });
+                return report;
+            }
+            catch (Exception ex) when (ex is JsonException || ex is InvalidCastException)
+            {
+                throw new CmcWebException("The web service answered, but not with a health report (is the web VM up to date?).", ex);
+            }
+        }
+
+        /// <summary>GET /api/cmc/settings: definitions, values in force, read-only information and recent changes (raw JSON, dates as text).</summary>
+        public async Task<JObject> GetSettingsAsync(CancellationToken ct)
+        {
+            string body = await SendAsync(() => _http.GetAsync("api/cmc/settings", ct), "settings", ct);
+            try { return ParseNoDates(body); }
+            catch (JsonException ex) { throw new CmcWebException("The web service answered, but not with its settings (is the web VM up to date?).", ex); }
+        }
+
+        /// <summary>Result of a settings save: the new state on success, or the reasons it was refused (key may be empty for the whole save).</summary>
+        public sealed class SettingsSaveResult
+        {
+            public JObject Settings { get; set; }
+            public List<KeyValuePair<string, string>> Errors { get; } = new List<KeyValuePair<string, string>>();
+            public bool Ok => Errors.Count == 0;
+        }
+
+        /// <summary>
+        /// PUT /api/cmc/settings with the administrator key (sent for this call only, never stored). Refusals (400 / 401 / 403) come back
+        /// as Errors; other failures are a CmcWebException.
+        /// </summary>
+        public async Task<SettingsSaveResult> SaveSettingsAsync(string adminKey, string changedBy, string machineId,
+            JObject values, bool confirmOpenIpList, CancellationToken ct)
+        {
+            var payload = new JObject
+            {
+                ["changedBy"] = changedBy,
+                ["machineId"] = machineId,
+                ["values"] = values,
+                ["confirmOpenIpList"] = confirmOpenIpList
+            };
+
+            try
+            {
+                using (var req = new HttpRequestMessage(HttpMethod.Put, "api/cmc/settings"))
+                {
+                    req.Headers.Add("X-Admin-Key", adminKey ?? "");
+                    req.Content = new StringContent(payload.ToString(Formatting.None), Encoding.UTF8, "application/json");
+                    using (var resp = await _http.SendAsync(req, ct).ConfigureAwait(false))
+                    {
+                        string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        var result = new SettingsSaveResult();
+                        int code = (int)resp.StatusCode;
+
+                        if (resp.IsSuccessStatusCode)
+                        {
+                            result.Settings = ParseNoDates(body);
+                            return result;
+                        }
+                        if (code == 400 || code == 401 || code == 403)
+                        {
+                            JObject err = null;
+                            try { err = ParseNoDates(body); } catch (JsonException) { }
+                            foreach (JObject e in (JArray)err?["errors"] ?? new JArray())
+                                result.Errors.Add(new KeyValuePair<string, string>(e.Value<string>("key") ?? "", e.Value<string>("message") ?? ""));
+                            if (result.Errors.Count == 0)
+                                result.Errors.Add(new KeyValuePair<string, string>("", code == 401
+                                    ? "Refused (401): the API key or the administrator key is not correct."
+                                    : Describe(resp.StatusCode)));
+                            return result;
+                        }
+                        throw new CmcWebException(Describe(resp.StatusCode));
+                    }
+                }
+            }
+            catch (CmcWebException) { throw; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) { throw new CmcWebException("Cannot reach the web service: " + ex.Message, ex, unreachable: true); }
+        }
+
+        private static JObject ParseNoDates(string body)
+        {
+            using (var reader = new JsonTextReader(new System.IO.StringReader(body)) { DateParseHandling = DateParseHandling.None })
+                return JObject.Load(reader);
+        }
+
+        private static DateTime? LocalTime(string iso) =>
+            DateTimeOffset.TryParse(iso, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var t)
+                ? t.LocalDateTime : (DateTime?)null;
+
         public async Task PingAsync(CancellationToken ct)
         {
             await SendAsync(() => _http.GetAsync("api/cmc/orders?afterSeq=9223372036854775000&limit=1", ct), "ping", ct);

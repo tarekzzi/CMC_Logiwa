@@ -14,28 +14,21 @@ namespace CMC_Logiwa
     /// </summary>
     public partial class DbSettingsWindow : Window
     {
-        private readonly DbSettings _existing;
+        // The saved settings of the environment shown (DEV and PRO are kept side by side): blank password / key = keep these.
+        private DbSettings _existing;
         private bool _loading = true;
 
-        public DbSettingsWindow(bool firstRun)
+        /// <param name="environment">DEV or PRO to show first (null = the one in use).</param>
+        public DbSettingsWindow(bool firstRun, string environment = null)
         {
             InitializeComponent();
 
-            _existing = DbSettingsStore.Load();
-
-            string env = _existing?.EnvironmentName ?? DbSettings.Dev;
+            string env = environment ?? DbSettingsStore.Load()?.EnvironmentName ?? DbSettings.Dev;
             cboEnvironment.SelectedIndex = env == DbSettings.Pro ? 1 : 0;
-            txtServer.Text = _existing?.Server ?? "";
-            txtDatabase.Text = _existing?.Database ?? DbSettings.DefaultDatabase(env);
-            txtUser.Text = _existing?.User ?? DbSettings.DefaultUser(env);
-            txtWebUrl.Text = _existing != null ? _existing.WebServiceUrl ?? "" : DbSettings.DefaultWebServiceUrl(env);
-            if (!string.IsNullOrEmpty(_existing?.ApiKey))
-                lblApiKeyHint.Visibility = Visibility.Visible;
+            ShowProfile(env);
 
             if (firstRun)
                 lblIntro.Text = "This PC has no database settings yet. Choose the environment and enter the local database details. Saved encrypted on this PC only.";
-            if (_existing != null)
-                lblPasswordHint.Visibility = Visibility.Visible;
 
             _loading = false;
             Loaded += (s, e) =>
@@ -44,26 +37,33 @@ namespace CMC_Logiwa
             };
         }
 
+        /// <summary>Fills the form with the saved settings of this environment, or its defaults when it was never set up here.</summary>
+        private void ShowProfile(string env)
+        {
+            _existing = DbSettingsStore.LoadProfile(env);
+            var current = DbSettingsStore.Load();
+
+            txtServer.Text = _existing?.Server ?? current?.Server ?? "";   // usually the same SQL Server for DEV and PRO on one PC
+            txtDatabase.Text = _existing?.Database ?? DbSettings.DefaultDatabase(env);
+            txtUser.Text = _existing?.User ?? DbSettings.DefaultUser(env);
+            txtWebUrl.Text = _existing != null ? _existing.WebServiceUrl ?? "" : DbSettings.DefaultWebServiceUrl(env);
+            txtPassword.Clear();
+            txtApiKey.Clear();
+            lblPasswordHint.Visibility = _existing != null ? Visibility.Visible : Visibility.Collapsed;
+            lblApiKeyHint.Visibility = !string.IsNullOrEmpty(_existing?.ApiKey) ? Visibility.Visible : Visibility.Collapsed;
+            _saveAnywayOffered = false;
+        }
+
         private string SelectedEnvironment =>
             (cboEnvironment.SelectedItem as ComboBoxItem)?.Content as string ?? DbSettings.Dev;
 
         private void cboEnvironment_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_loading) return;
-
-            // Follow the environment only while the fields still hold the other environment's defaults.
-            string other = SelectedEnvironment == DbSettings.Pro ? DbSettings.Dev : DbSettings.Pro;
-            if (string.IsNullOrWhiteSpace(txtDatabase.Text) || txtDatabase.Text == DbSettings.DefaultDatabase(other))
-                txtDatabase.Text = DbSettings.DefaultDatabase(SelectedEnvironment);
-            if (string.IsNullOrWhiteSpace(txtUser.Text) || txtUser.Text == DbSettings.DefaultUser(other))
-                txtUser.Text = DbSettings.DefaultUser(SelectedEnvironment);
-            // The key belongs to one environment: never carry it over when the environment changes.
-            if (string.IsNullOrWhiteSpace(txtWebUrl.Text) || txtWebUrl.Text == DbSettings.DefaultWebServiceUrl(other))
-                txtWebUrl.Text = DbSettings.DefaultWebServiceUrl(SelectedEnvironment);
-            if (_existing != null && _existing.EnvironmentName != SelectedEnvironment)
-                lblApiKeyHint.Visibility = Visibility.Collapsed;
+            // Each environment has its own saved settings (password and API key included): show the chosen one's.
+            ShowProfile(SelectedEnvironment);
+            ShowStatus("", isError: false);
         }
-
         // Set after a failed web service test: pressing Save again keeps the settings anyway (the web VM may just be down).
         private bool _saveAnywayOffered;
 
@@ -71,7 +71,7 @@ namespace CMC_Logiwa
         {
             string password = txtPassword.Password;
             if (string.IsNullOrEmpty(password) && _existing != null)
-                password = _existing.Password;   // blank = keep the saved password
+                password = _existing.Password;   // blank = keep this environment's saved password
 
             var settings = new DbSettings
             {
@@ -85,7 +85,7 @@ namespace CMC_Logiwa
 
             // Blank key = keep the saved one, but only for the same environment.
             string apiKey = txtApiKey.Password.Trim();
-            if (apiKey.Length == 0 && _existing != null && _existing.EnvironmentName == settings.EnvironmentName)
+            if (apiKey.Length == 0 && _existing != null)
                 apiKey = _existing.ApiKey ?? "";
             settings.ApiKey = apiKey;
 

@@ -127,6 +127,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Services\BackendHealthService.cs" />
     <Compile Include="Services\CmcWebClient.cs" />
     <Compile Include="Services\OrderSyncService.cs" />
     <Compile Include="Services\LocalAuthService.cs" />
@@ -139,6 +140,9 @@
     </Compile>
     <Compile Include="ErrorsView.xaml.cs">
       <DependentUpon>ErrorsView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="SettingsWindow.Web.cs">
+      <DependentUpon>SettingsWindow.xaml</DependentUpon>
     </Compile>
     <Compile Include="SettingsWindow.xaml.cs">
       <DependentUpon>SettingsWindow.xaml</DependentUpon>

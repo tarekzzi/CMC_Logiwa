@@ -13,6 +13,13 @@
                 <TextBlock x:Name="lblSubtitle" Text="Sign in with your username and password."
                            Style="{StaticResource MutedText}" Margin="0,4,0,24" />
 
+                <Label Content="Environment" Target="{Binding ElementName=cboEnv}" />
+                <ComboBox x:Name="cboEnv" MinHeight="38" Margin="0,0,0,14" SelectionChanged="cboEnv_SelectionChanged"
+                          ToolTip="DEV = Logiwa sandbox, test data. PRO = live orders, real cartons. Each has its own database and users.">
+                    <ComboBoxItem Content="DEV" />
+                    <ComboBoxItem Content="PRO" />
+                </ComboBox>
+
                 <Label Content="_Username" Target="{Binding ElementName=txtUsername}" />
                 <TextBox x:Name="txtUsername" Margin="0,0,0,16" MaxLength="50" />
 

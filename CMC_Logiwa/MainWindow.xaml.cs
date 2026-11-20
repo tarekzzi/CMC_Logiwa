@@ -68,7 +68,8 @@ namespace CMC_Logiwa
             InitializeComponent();
 
             var settings = DbSettingsStore.Load();
-            lblSession.Text = settings == null ? userName : $"{settings.EnvironmentName}   ·   {userName}";
+            string who = userName + (SessionVariables.IsAdmin ? " (administrator)" : "");
+            lblSession.Text = settings == null ? who : $"{settings.EnvironmentName}   ·   {who}";
             ShowEnvironmentBanner(settings?.EnvironmentName);
 
             _logView = CollectionViewSource.GetDefaultView(_logLines);
@@ -87,6 +88,7 @@ namespace CMC_Logiwa
                 DateTime startedAt = DateTime.Now;     // orders stored before now are "past" orders for the Logiwa check
                 await LoadMachineSettingsAsync();   // before the sync starts: it uses the machine ID
                 StartWebSync();
+                StartHealthCheck();
                 // Background: the machine can work while Logiwa is asked. Runs at start-up, then once a day as a safety net for any
                 // status webhook that was missed (the webhooks themselves arrive through the web sync within seconds).
                 _ = Task.Run(async () =>
@@ -101,7 +103,13 @@ namespace CMC_Logiwa
                 });
 
                 // The warehouse is required: ask for it right away instead of leaving the app half working.
-                if (!_hasWarehouse)
+                if (!_hasWarehouse && !SessionVariables.IsAdmin)
+                {
+                    MessageBox.Show(this,
+                        "No warehouse is chosen for this machine yet, so no orders are downloaded and the machine cannot be connected.\n\nAsk an administrator to choose it in Settings > Machine.",
+                        "Warehouse not set", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                else if (!_hasWarehouse)
                 {
                     MessageBox.Show(this,
                         "Choose the warehouse this machine serves.\n\nOnly that warehouse's orders are downloaded, and the machine cannot be connected until it is set. Settings > Machine opens now.",
@@ -118,8 +126,85 @@ namespace CMC_Logiwa
                 StopReconnect();
                 _duplicatesTimer.Stop();
                 _sync?.Stop();
+                _health.Stop();
             };
         }
+
+        // ===== Backend health (web VM, its database, Logiwa, webhooks): red banner + one popup per new problem =====
+
+        private readonly BackendHealthService _health = new BackendHealthService();
+        private bool _healthPopupOpen;
+        private bool _syncHadError;
+
+        private void StartHealthCheck()
+        {
+            _health.OnState += s => Dispatcher.BeginInvoke(new Action(() => ShowHealth(s)));
+            _health.Start();
+        }
+
+        private void btnHealthCheckNow_Click(object sender, RoutedEventArgs e)
+        {
+            healthBannerText.Text += "   (checking ...)";
+            _health.RequestCheck();
+        }
+
+        private void ShowHealth(BackendHealthState s)
+        {
+            if (!s.Configured)
+            {
+                healthBanner.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            if (s.Problems.Count > 0)
+            {
+                healthBanner.Background = Res("DangerBrush");
+                healthBannerText.Foreground = Brushes.White;
+                healthBannerText.Text = "BACKEND PROBLEM  ·  " + string.Join("   ·   ", s.Problems.Select(DescribeProblem))
+                                        + $"   (checked {s.CheckedAt:HH:mm})";
+                healthBanner.Visibility = Visibility.Visible;
+
+                foreach (var p in s.NewProblems)
+                    AppendLog("ERROR: Backend problem: " + DescribeProblem(p));
+
+                if (s.NewProblems.Count > 0 && !_healthPopupOpen)
+                {
+                    _healthPopupOpen = true;
+                    try
+                    {
+                        MessageBox.Show(this,
+                            string.Join("\n\n", s.NewProblems.Select(DescribeProblem)) +
+                            "\n\nThe machine can keep packing orders that are already on this PC. Tell the person who looks after the web VM / Logiwa link." +
+                            "\n\nThe red bar stays until the problem is solved; this PC checks again every 5 minutes.",
+                            "Backend problem", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                    finally { _healthPopupOpen = false; }
+                }
+                return;
+            }
+
+            if (s.Recovered)
+            {
+                healthBanner.Background = Res("SuccessBgBrush");
+                healthBannerText.Foreground = Res("SuccessBrush");
+                healthBannerText.Text = $"Backend working again since {s.CheckedAt:HH:mm}" +
+                                        (s.DownSince.HasValue ? $" (problem started {s.DownSince.Value:HH:mm})" : "") +
+                                        ". Checking open orders with Logiwa for changes missed meanwhile.";
+                healthBanner.Visibility = Visibility.Visible;
+                AppendLog("INFO: " + healthBannerText.Text);
+                OrderSyncService.RequestPoll();
+                _ = Task.Run(() => RunShippedCheckAsync(DateTime.Now));   // catches on hold / cancelled / shipped webhooks lost during the outage
+                return;
+            }
+
+            healthBanner.Visibility = Visibility.Collapsed;   // all fine (the green bar goes away at the next good check)
+        }
+
+        private static string DescribeProblem(BackendProblem p) =>
+            p.Message + (p.Since.HasValue ? $" (since {FormatSince(p.Since.Value)})" : "");
+
+        private static string FormatSince(DateTime t) =>
+            t.Date == DateTime.Today ? t.ToString("HH:mm") : t.ToString("ddd dd/MM HH:mm");
 
         // ===== Web sync (orders and labels from the web VM, label requests back) =====
 
@@ -160,6 +245,11 @@ namespace CMC_Logiwa
             lblSync.Text = text;
             lblSync.Foreground = brush;
             lblSync.ToolTip = text;
+
+            // The sync runs every 20 s: when it starts or stops failing, check the backend now instead of at the next 5 minute tick.
+            bool hasError = s.Configured && s.Error != null;
+            if (hasError != _syncHadError) _health.RequestCheck();
+            _syncHadError = hasError;
         }
 
         private Brush Res(string key) => (Brush)FindResource(key);
@@ -514,6 +604,24 @@ namespace CMC_Logiwa
             var dlg = new SettingsWindow(machineConnected: _networkManager != null && _networkManager.IsConnected, startOnMachineTab: machineTab) { Owner = this };
             dlg.ShowDialog();
 
+            if (dlg.EnvironmentSwitchRequested)
+            {
+                // The other environment has its own database and users: start again at the sign-in window.
+                AppendLog("INFO: Environment switched, restarting at the sign-in window.");
+                _exitConfirmed = true;
+                try
+                {
+                    System.Diagnostics.Process.Start(System.Reflection.Assembly.GetEntryAssembly().Location);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, "The environment was switched. Start CMC Logiwa again.\n\n" + ex.Message, "Switch environment",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                Application.Current.Shutdown();
+                return;
+            }
+
             if (dlg.MachineSettingsChanged)
             {
                 await LoadMachineSettingsAsync();
@@ -682,7 +790,21 @@ namespace CMC_Logiwa
         private readonly ShippedCheckService _shipped = new ShippedCheckService();
 
         /// <summary>At start-up: asks Logiwa (through the web VM) about every order not processed yet and drops the shipped ones.</summary>
+        private int _shippedCheckRunning;
+
         private async Task RunShippedCheckAsync(DateTime startedAt)
+        {
+            // Start-up / daily run and the run after a backend outage can meet: one at a time is enough.
+            if (System.Threading.Interlocked.Exchange(ref _shippedCheckRunning, 1) == 1)
+            {
+                AppendLog("INFO: Logiwa check already running.");
+                return;
+            }
+            try { await RunShippedCheckCoreAsync(startedAt).ConfigureAwait(false); }
+            finally { System.Threading.Interlocked.Exchange(ref _shippedCheckRunning, 0); }
+        }
+
+        private async Task RunShippedCheckCoreAsync(DateTime startedAt)
         {
             _shipped.OnLog -= AppendLog;
             _shipped.OnLog += AppendLog;
