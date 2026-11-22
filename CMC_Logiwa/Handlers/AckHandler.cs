@@ -170,6 +170,9 @@ namespace CMC_Logiwa.Handlers
             await SendPRNAsync(result.MachineId, result.Reference, packJobId);
         }
 
+        /// <summary>Largest label (characters) ever sent to the CMC: the biggest size that worked in the machine test.</summary>
+        internal const int MaxPrnLabelChars = 32000;
+
         private async Task SendPRNAsync(string machineId, string reference, int packJobId)
         {
             try
@@ -190,6 +193,15 @@ namespace CMC_Logiwa.Handlers
                 {
                     string order = dt.Columns.Contains("OrderNumber") ? dt.Rows[0]["OrderNumber"]?.ToString() : null;
                     _networkManager.LogError($"{(string.IsNullOrEmpty(order) ? "job " + packJobId : order)}: label missing, print not sent");
+                    return;
+                }
+
+                // Last line of defence: the CMC machine crashed on a 40,000 character label (size test 2026-11-20) and worked at 32,000.
+                // The web VM already refuses larger labels; this protects against older ones already in the database.
+                if (labelData.Length > MaxPrnLabelChars)
+                {
+                    string order = dt.Columns.Contains("OrderNumber") ? dt.Rows[0]["OrderNumber"]?.ToString() : null;
+                    _networkManager.LogError($"{(string.IsNullOrEmpty(order) ? "job " + packJobId : order)}: label is {labelData.Length:N0} characters, more than the {MaxPrnLabelChars:N0} the machine can take, print not sent");
                     return;
                 }
 
