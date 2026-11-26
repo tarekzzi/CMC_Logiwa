@@ -61,3 +61,22 @@ The `Reference` field carries the PackJobID assigned at ENQ time. Handlers swall
 - UI is WPF. All colours, fonts and control styles (primary/secondary/danger buttons, text boxes, combo box, scroll bars) live in `Theme.xaml`, merged in `App.xaml`; use its brushes/styles rather than hard-coding colours. New XAML files must be added to `CMC_Logiwa.csproj` as `<Page Include=...>` (code-behind as `<Compile>` with `DependentUpon`). Per-monitor DPI awareness is declared in `app.manifest`. The implicit `TextBlock` style is deliberately absent: setting Foreground there overrides button text colours — set `Foreground` on the window instead.
 - Two JSON libraries are in use: `Newtonsoft.Json` (auth) and `System.Text.Json` (wave/shipment APIs).
 - This folder is its own git repo, but it sits inside an unrelated repo rooted at `C:\Users\tarek\Desktop`; run git commands from here, never from a parent folder.
+
+
+## Weekly report progress log (standing instruction)
+
+The owner sends a weekly executive report to the MDs every Friday. A separate "Weekly Executive Reports" session builds it from a running log, so it only knows what is written here.
+
+Log as you go, not at the end: append an entry right after each task or meaningful change (feature built or fixed, deployed, decision made, blocker found or cleared, test result, risk spotted), and also at least once an hour while a session is running, even if the task is unfinished (use Status: In progress). Sessions can crash or restart and anything not written to the log is lost. Append to `C:\WeeklyReports\logs\Logiwa-CMC.md`. Do not rewrite or delete older entries. Use this shape:
+
+```
+## YYYY-MM-DD HH:mm - <repo or area> - <short title>
+- What changed: plain words, no jargon where possible
+- Why it matters: business effect (what it lets the warehouse or users do, or what risk it removes)
+- Status: Done / In progress / Blocked / Waiting on someone
+- Risks or blockers: or "none"
+- Next step: or "none"
+- Evidence: commit hash(es) or test result
+```
+
+Rules: write for a non-technical reader first, add technical detail after. Be honest about what is untested or not yet run against the live system. Never put passwords, API keys, connection strings or customer details (names, addresses, phone numbers) in the log. Skip tiny edits (typos, formatting). Keep it quick, a few lines per entry.

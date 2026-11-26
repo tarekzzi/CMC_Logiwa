@@ -9,7 +9,7 @@ so DEV and PRO can never drift apart. Run it on the packing PC (or any PC that c
   powershell -ExecutionPolicy Bypass -File .\Install-LocalDb.ps1 -Environment PRO -VerifyOnly       (changes nothing, just checks)
 
 What it does, in this order (every script is safe to re-run; nothing is deleted):
-  001 schema (creates the database), 000 app login (asks for the password, never written to disk), 002 .. 009 procedures and tables,
+  001 schema (creates the database), 000 app login (asks for the password, never written to disk), 002 .. 011 procedures and tables,
   events-data.sql (machine event texts, only when the Events table is empty), then a check that every procedure exists and the app login can run them.
 A new script (009, ...) only has to be added to $Scripts below.
 #>
@@ -40,7 +40,9 @@ $Scripts = @(
     '006_machine_settings_dev.sql',
     '007_shipped_check_dev.sql',
     '008_machine_warehouse_dev.sql',
-    '009_user_roles_dev.sql'
+    '009_user_roles_dev.sql',
+    '010_single_sku_dev.sql',
+    '011_date_fields_dev.sql'
 )
 $EventsFile = 'events-data.sql'
 $Placeholder = 'CHANGE_ME_BEFORE_RUNNING'

@@ -89,6 +89,12 @@ namespace CMC_Logiwa.Services
         public string WeightText => WeightG > 0 ? WeightG + " g" : "";
     }
 
+    /// <summary>The same moment is shown three ways: local time on this PC, UTC, and the time Logiwa recorded (UTC). Blank when unknown (boxes stored before the Logiwa time was kept).</summary>
+    public static class TimeText
+    {
+        public static string Minutes(DateTime? t) => t.HasValue ? t.Value.ToString("yyyy-MM-dd HH:mm") : "";
+    }
+
     /// <summary>One job that a scan would accept right now.</summary>
     public sealed class AvailableJob
     {
@@ -96,7 +102,11 @@ namespace CMC_Logiwa.Services
         public string OrderCode { get; set; }
         public string ClientCode { get; set; }
         public DateTime ReceivedAt { get; set; }
+        public DateTime? ReceivedUtc { get; set; }
+        public DateTime? LogiwaAt { get; set; }
         public string ReceivedText => ReceivedAt.ToString("yyyy-MM-dd HH:mm");
+        public string ReceivedUtcText => TimeText.Minutes(ReceivedUtc);
+        public string LogiwaText => TimeText.Minutes(LogiwaAt);
     }
 
     /// <summary>One box that did not pack (Failed or Removed), with the reason the machine gave.</summary>
@@ -107,6 +117,12 @@ namespace CMC_Logiwa.Services
         public string OrderCode { get; set; }
         public string Status { get; set; }
         public DateTime EventAt { get; set; }
+        public DateTime? ReceivedAt { get; set; }
+        public DateTime? ReceivedUtc { get; set; }
+        public DateTime? LogiwaAt { get; set; }
+        public string ReceivedText => TimeText.Minutes(ReceivedAt);
+        public string ReceivedUtcText => TimeText.Minutes(ReceivedUtc);
+        public string LogiwaText => TimeText.Minutes(LogiwaAt);
         public string EventCode { get; set; }
         public string Reason { get; set; }
         public string MachineId { get; set; }
@@ -192,7 +208,9 @@ namespace CMC_Logiwa.Services
                     TrackingNumber = Str(r, "TrackingNumber"),
                     OrderCode = Str(r, "OrderCode"),
                     ClientCode = Str(r, "ClientCode"),
-                    ReceivedAt = Convert.ToDateTime(r["ReceivedAt"])
+                    ReceivedAt = Convert.ToDateTime(r["ReceivedAt"]),
+                    ReceivedUtc = NullableTime(r, "ReceivedUtc"),
+                    LogiwaAt = NullableTime(r, "LogiwaAt")
                 });
             return list;
         }
@@ -219,6 +237,9 @@ namespace CMC_Logiwa.Services
                     OrderCode = Str(r, "OrderCode"),
                     Status = Str(r, "OrderStatus"),
                     EventAt = Convert.ToDateTime(r["EventAt"]),
+                    ReceivedAt = NullableTime(r, "ReceivedAt"),
+                    ReceivedUtc = NullableTime(r, "ReceivedUtc"),
+                    LogiwaAt = NullableTime(r, "LogiwaAt"),
                     EventCode = Str(r, "EventCode"),
                     Reason = Str(r, "Reason"),
                     MachineId = Str(r, "MachineId"),
@@ -376,6 +397,7 @@ namespace CMC_Logiwa.Services
             return list;
         }
 
+        private static DateTime? NullableTime(DataRow r, string col) => r.Table.Columns.Contains(col) && r[col] != DBNull.Value ? Convert.ToDateTime(r[col]) : (DateTime?)null;
         private static string Str(DataRow r, string col) => r[col] == DBNull.Value ? "" : r[col].ToString();
         private static int Int(DataRow r, string col) => r[col] == DBNull.Value ? 0 : Convert.ToInt32(r[col], CultureInfo.InvariantCulture);
         private static int? NullableInt(DataRow r, string col) => r[col] == DBNull.Value ? (int?)null : Convert.ToInt32(r[col], CultureInfo.InvariantCulture);

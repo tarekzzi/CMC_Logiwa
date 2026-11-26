@@ -236,7 +236,9 @@
                                     <DataGridTextColumn Header="Tracking number" Binding="{Binding TrackingNumber}" Width="*" MinWidth="200" />
                                     <DataGridTextColumn Header="Order" Binding="{Binding OrderCode}" Width="180" />
                                     <DataGridTextColumn Header="Client" Binding="{Binding ClientCode}" Width="140" />
-                                    <DataGridTextColumn Header="Received" Binding="{Binding ReceivedText}" Width="170" />
+                                    <DataGridTextColumn Header="Received (local)" Binding="{Binding ReceivedText}" Width="140" />
+                                    <DataGridTextColumn Header="Received (UTC)" Binding="{Binding ReceivedUtcText}" Width="140" />
+                                    <DataGridTextColumn Header="Logiwa (UTC)" Binding="{Binding LogiwaText}" Width="140" />
                                 </DataGrid.Columns>
                             </DataGrid>
                             <DataGrid x:Name="gridStops" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">

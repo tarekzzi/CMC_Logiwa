@@ -67,6 +67,9 @@
                             <DataGridTextColumn Header="Order" Binding="{Binding OrderCode}" Width="90" />
                             <DataGridTextColumn Header="Result" Binding="{Binding Status}" Width="90" ElementStyle="{StaticResource StatusCell}" />
                             <DataGridTextColumn Header="Code" Binding="{Binding EventCode}" Width="60" />
+                            <DataGridTextColumn Header="Received (local)" Binding="{Binding ReceivedText}" Width="125" />
+                            <DataGridTextColumn Header="Received (UTC)" Binding="{Binding ReceivedUtcText}" Width="125" />
+                            <DataGridTextColumn Header="Logiwa (UTC)" Binding="{Binding LogiwaText}" Width="125" />
                             <DataGridTextColumn Header="Reason from the machine" Binding="{Binding Reason}" Width="*" MinWidth="220" ElementStyle="{StaticResource WrapCell}" />
                             <DataGridTextColumn Header="Measured" Binding="{Binding MeasuredText}" Width="215" />
                             <DataGridTextColumn Header="Machine" Binding="{Binding MachineId}" Width="75" />
