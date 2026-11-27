@@ -192,6 +192,7 @@ namespace CMC_Logiwa
                 }
 
                 SessionVariables.UserName = username;
+                SessionVariables.LoginAt = DateTime.Now;
                 SessionVariables.IsAdmin = isAdmin;
                 var next = new MainWindow(username);
 

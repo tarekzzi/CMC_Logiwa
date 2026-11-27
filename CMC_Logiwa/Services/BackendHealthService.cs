@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace CMC_Logiwa.Services
 {
-    /// <summary>One problem the backend (web VM, its database, Logiwa, webhooks) has. Code is stable: one popup per new code.</summary>
+    /// <summary>One problem the backend (web VM, its database, Logiwa) has. Code is stable: one popup per new code.</summary>
     public sealed class BackendProblem
     {
         public string Code { get; set; }
@@ -19,9 +19,8 @@ namespace CMC_Logiwa.Services
     {
         public bool Ok { get; set; }
         public DateTime? LastWebhookAt { get; set; }
-        /// <summary>Set on the web VM (Settings > Web VM / Logiwa): how often this PC checks, and how long after start-up a webhook silence is not an alarm.</summary>
+        /// <summary>Set on the web VM (Settings > Web VM / Logiwa): how often this PC checks.</summary>
         public int? PcCheckMinutes { get; set; }
-        public int? StartupGraceMinutes { get; set; }
         public List<BackendProblem> Problems { get; } = new List<BackendProblem>();
     }
 
@@ -51,14 +50,10 @@ namespace CMC_Logiwa.Services
         public const string Unreachable = "unreachable";
         public const string Refused = "webservice";
 
-        public const string Webhooks = "webhooks";
-
         private static readonly TimeSpan MinGap = TimeSpan.FromSeconds(15);   // early checks are never closer than this
 
         // Defaults until the web VM tells its settings (and when it cannot be reached).
         private TimeSpan _interval = TimeSpan.FromMinutes(5);
-        private TimeSpan _startupGrace = TimeSpan.FromMinutes(30);
-        private readonly DateTime _startedAt = DateTime.Now;
 
         private readonly SemaphoreSlim _wake = new SemaphoreSlim(0, 1);
         private readonly object _gate = new object();
@@ -142,12 +137,10 @@ namespace CMC_Logiwa.Services
                 {
                     BackendHealthReport report = await web.GetHealthAsync(ct).ConfigureAwait(false);
                     if (report.PcCheckMinutes is int m && m >= 1 && m <= 60) _interval = TimeSpan.FromMinutes(m);
-                    if (report.StartupGraceMinutes is int g && g >= 0 && g <= 240) _startupGrace = TimeSpan.FromMinutes(g);
 
-                    // Morning start: the last webhook is usually from the evening before. Not an alarm until the grace time is over.
-                    bool inGrace = now - _startedAt < _startupGrace;
-                    problems.AddRange(report.Problems.Where(p => !(inGrace && p.Code == Webhooks)));
-                    if (inGrace && report.Problems.Count > 0 && problems.Count == 0) report.Ok = true;
+                    // Only communication problems arrive here: the web VM cannot reach its database or Logiwa. Quiet periods (no orders,
+                    // no webhooks) are not problems.
+                    problems.AddRange(report.Problems);
                     if (!report.Ok && problems.Count == 0)
                         problems.Add(new BackendProblem { Code = Refused, Message = "The web VM reports a problem without details." });
                 }

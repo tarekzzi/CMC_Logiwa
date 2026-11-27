@@ -72,7 +72,7 @@
             <TextBlock x:Name="envBannerText" FontWeight="SemiBold" FontSize="13" HorizontalAlignment="Center" />
         </Border>
 
-        <!-- ===== Backend health: red while the web VM / Logiwa / webhooks have a problem, green for a while after it is solved ===== -->
+        <!-- ===== Backend health: red while this PC cannot reach the web VM, or the web VM cannot reach its database or Logiwa, green for a while after it is solved ===== -->
         <Border x:Name="healthBanner" Visibility="Collapsed" Padding="24,8">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -188,7 +188,7 @@
                     <Border Style="{StaticResource Card}" Margin="0,0,0,16">
                         <StackPanel>
                             <TextBlock Text="Duplicate scans" Style="{StaticResource CardTitle}" />
-                            <TextBlock Text="Scanned again after processing. Reset to process it again, or reject."
+                            <TextBlock Text="Scanned again after processing, newest first. Reset to process it again, or reject. A box leaves this list after 24 hours or at the next sign-in."
                                        Style="{StaticResource MutedText}" FontSize="12.5" TextWrapping="Wrap"
                                        Margin="0,0,0,8" />
 
@@ -277,6 +277,10 @@
 
           <TabItem Header="Errors">
             <local:ErrorsView x:Name="errors" />
+          </TabItem>
+
+          <TabItem Header="History">
+            <local:HistoryView x:Name="history" />
           </TabItem>
         </TabControl>
     </Grid>

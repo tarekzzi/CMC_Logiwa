@@ -301,8 +301,7 @@ namespace CMC_Logiwa.Services
                 {
                     Ok = root.Value<bool?>("ok") ?? false,
                     LastWebhookAt = LocalTime(root.Value<string>("lastWebhookAt")),
-                    PcCheckMinutes = root.Value<int?>("pcCheckMinutes"),
-                    StartupGraceMinutes = root.Value<int?>("startupGraceMinutes")
+                    PcCheckMinutes = root.Value<int?>("pcCheckMinutes")
                 };
                 foreach (JObject p in (JArray)root["problems"] ?? new JArray())
                     report.Problems.Add(new BackendProblem

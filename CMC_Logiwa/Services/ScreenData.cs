@@ -161,6 +161,59 @@ namespace CMC_Logiwa.Services
         public string MachineId { get; set; }
         public string EventAtText => EventAt.ToString("HH:mm:ss.fff");
         public string DateText => EventAt.ToString("yyyy-MM-dd");
+        public string DateTimeText => EventAt.ToString("yyyy-MM-dd HH:mm:ss");
+    }
+
+    /// <summary>One box in the History tab: what the machine did and what Logiwa says.</summary>
+    public sealed class HistoryRow
+    {
+        public int PackJobId { get; set; }
+        public string TrackingNumber { get; set; }
+        public string OrderCode { get; set; }
+        public string ClientCode { get; set; }
+        public string LocalStatus { get; set; }
+        public string MachineResult { get; set; }
+        public string LogiwaStatus { get; set; }
+        public string LogiwaState { get; set; }
+        public string Difference { get; set; }
+        public DateTime ReceivedAt { get; set; }
+        public DateTime? ReceivedUtc { get; set; }
+        public DateTime? LogiwaAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public DateTime? LogiwaCheckedAt { get; set; }
+        public int? LengthMm { get; set; }
+        public int? WidthMm { get; set; }
+        public int? HeightMm { get; set; }
+        public int? WeightG { get; set; }
+        public string MachineReason { get; set; }
+        public string MachineId { get; set; }
+        public string Operator { get; set; }
+        public bool Archived { get; set; }
+
+        public bool HasDifference => !string.IsNullOrEmpty(Difference);
+        public string ReceivedText => ReceivedAt.ToString("yyyy-MM-dd HH:mm");
+        public string ReceivedUtcText => TimeText.Minutes(ReceivedUtc);
+        public string LogiwaText => TimeText.Minutes(LogiwaAt);
+        public string CompletedText => CompletedAt.HasValue ? CompletedAt.Value.ToString("yyyy-MM-dd HH:mm:ss") : "";
+        public string MachineText => MachineResult == "NotPacked" ? "Not packed" : MachineResult == "InProgress" ? "In progress" : MachineResult;
+        public string MeasuredText
+        {
+            get
+            {
+                bool hasSize = LengthMm > 0 && WidthMm > 0 && HeightMm > 0;
+                bool hasWeight = WeightG > 0;
+                string size = hasSize ? $"{LengthMm} x {WidthMm} x {HeightMm} mm" : "";
+                string weight = hasWeight ? $"{WeightG} g" : "";
+                return hasSize && hasWeight ? size + ", " + weight : size + weight;
+            }
+        }
+    }
+
+    /// <summary>The totals above the History list.</summary>
+    public sealed class HistoryCounts
+    {
+        public int Total, Completed, Failed, Removed, InProgress, NotPacked;
+        public int LogiwaOpen, LogiwaShipped, LogiwaCancelled, LogiwaOnHold, LogiwaUnknown, Differences;
     }
 
     /// <summary>Reads for the Overview and Errors tabs. Stored procedures only, all in db\004_procs_screens_dev.sql.</summary>
@@ -380,6 +433,69 @@ namespace CMC_Logiwa.Services
                 { "@Search", string.IsNullOrWhiteSpace(search) ? null : search.Trim() },
                 { "@Client", string.IsNullOrWhiteSpace(client) ? null : client }
             };
+
+        /// <param name="machineResult">Completed, Failed, Removed, InProgress or NotPacked; null = all.</param>
+        /// <param name="logiwaState">Open, Shipped, Cancelled, OnHold or Unknown; null = all.</param>
+        public static List<HistoryRow> GetHistory(string search, DateTime? fromDay, DateTime? toDay, string machineResult, string logiwaState, bool differencesOnly, int max)
+        {
+            DataTable dt = new SQLManager().ExecuteStoredProcedure("dbo.sp_List_History", new Dictionary<string, object>
+            {
+                { "@Search", string.IsNullOrWhiteSpace(search) ? null : search.Trim() },
+                { "@From", fromDay?.Date },
+                { "@To", toDay?.Date.AddDays(1) },      // exclusive end
+                { "@MachineResult", machineResult },
+                { "@LogiwaState", logiwaState },
+                { "@DiffOnly", differencesOnly },
+                { "@Max", max }
+            });
+
+            var list = new List<HistoryRow>();
+            foreach (DataRow r in dt.Rows)
+                list.Add(new HistoryRow
+                {
+                    PackJobId = Convert.ToInt32(r["PackJobID"]),
+                    TrackingNumber = Str(r, "TrackingNumber"),
+                    OrderCode = Str(r, "OrderCode"),
+                    ClientCode = Str(r, "ClientCode"),
+                    LocalStatus = Str(r, "LocalStatus"),
+                    MachineResult = Str(r, "MachineResult"),
+                    LogiwaStatus = Str(r, "LogiwaStatus"),
+                    LogiwaState = Str(r, "LogiwaState"),
+                    Difference = Str(r, "Difference"),
+                    ReceivedAt = Convert.ToDateTime(r["ReceivedAt"]),
+                    ReceivedUtc = NullableTime(r, "ReceivedUtc"),
+                    LogiwaAt = NullableTime(r, "LogiwaAt"),
+                    CompletedAt = NullableTime(r, "CompletedAt"),
+                    LogiwaCheckedAt = NullableTime(r, "LogiwaCheckedAt"),
+                    LengthMm = NullableInt(r, "LengthMm"),
+                    WidthMm = NullableInt(r, "WidthMm"),
+                    HeightMm = NullableInt(r, "HeightMm"),
+                    WeightG = NullableInt(r, "WeightG"),
+                    MachineReason = Str(r, "MachineReason"),
+                    MachineId = Str(r, "MachineId"),
+                    Operator = Str(r, "Operator"),
+                    Archived = Convert.ToBoolean(r["Archived"])
+                });
+            return list;
+        }
+
+        public static HistoryCounts GetHistoryCounts(string search, DateTime? fromDay, DateTime? toDay)
+        {
+            DataTable dt = new SQLManager().ExecuteStoredProcedure("dbo.sp_History_Counts", new Dictionary<string, object>
+            {
+                { "@Search", string.IsNullOrWhiteSpace(search) ? null : search.Trim() },
+                { "@From", fromDay?.Date },
+                { "@To", toDay?.Date.AddDays(1) }
+            });
+            var c = new HistoryCounts();
+            if (dt.Rows.Count == 0) return c;
+            DataRow r = dt.Rows[0];
+            c.Total = Int(r, "Total"); c.Completed = Int(r, "Completed"); c.Failed = Int(r, "Failed"); c.Removed = Int(r, "Removed");
+            c.InProgress = Int(r, "InProgress"); c.NotPacked = Int(r, "NotPacked");
+            c.LogiwaOpen = Int(r, "LogiwaOpen"); c.LogiwaShipped = Int(r, "LogiwaShipped"); c.LogiwaCancelled = Int(r, "LogiwaCancelled");
+            c.LogiwaOnHold = Int(r, "LogiwaOnHold"); c.LogiwaUnknown = Int(r, "LogiwaUnknown"); c.Differences = Int(r, "Differences");
+            return c;
+        }
 
         public static List<JobEvent> GetJobEvents(int packJobId)
         {

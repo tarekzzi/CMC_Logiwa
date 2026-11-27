@@ -130,7 +130,7 @@ namespace CMC_Logiwa
             };
         }
 
-        // ===== Backend health (web VM, its database, Logiwa, webhooks): red banner + one popup per new problem =====
+        // ===== Backend health (this PC reaching the web VM; the web VM reaching its database and Logiwa): red banner + one popup per new problem =====
 
         private readonly BackendHealthService _health = new BackendHealthService();
         private bool _healthPopupOpen;
@@ -672,8 +672,9 @@ namespace CMC_Logiwa
         // ===== Duplicate scans: reset or reject =====
 
         /// <summary>
-        /// Lists tracking numbers scanned again after they were processed (last 24 h) that nobody has
-        /// reset or rejected yet. Refreshed every few seconds while the window is open.
+        /// Lists tracking numbers scanned again after they were processed that nobody has reset or rejected yet, newest on top.
+        /// A box leaves the list 24 hours after its last duplicate scan or at the next sign-in, whichever is first.
+        /// Refreshed every few seconds while the window is open.
         /// </summary>
         private async Task RefreshDuplicatesAsync()
         {
@@ -684,7 +685,7 @@ namespace CMC_Logiwa
             try
             {
                 DataTable dt = await Task.Run(() => new SQLManager().ExecuteStoredProcedure(
-                    "dbo.sp_List_RecentDuplicates", new Dictionary<string, object> { { "@Hours", 24 } }));
+                    "dbo.sp_List_RecentDuplicates", new Dictionary<string, object> { { "@Hours", 24 }, { "@Since", SessionVariables.LoginAt }, { "@Max", 100 } }));
 
                 string selected = (lstDuplicates.SelectedItem as DuplicateItem)?.OrderNumber;
 
